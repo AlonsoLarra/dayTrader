@@ -37,13 +37,30 @@ class AgentOrchestrator:
             agent._broadcaster = broadcaster
 
     async def reload_from_db(self) -> None:
-        """On startup, mark any DB-running agents as stopped since the process restarted."""
+        """On startup, recreate agent instances in memory for all non-killed agents."""
         async with AsyncSessionLocal() as session:
-            result = await session.execute(select(AgentState).where(AgentState.status == "running"))
+            result = await session.execute(
+                select(AgentState).where(AgentState.status != "killed")
+            )
             states = result.scalars().all()
             for state in states:
-                state.status = "stopped"
-                state.updated_at = datetime.utcnow()
+                strategy_cls = STRATEGY_MAP.get(state.strategy)
+                if not strategy_cls:
+                    continue
+                strategy = strategy_cls({})
+                exchange = create_exchange()
+                guardrails = RiskGuardrails(
+                    state.budget_allocated, settings.STOP_LOSS_PCT, settings.MAX_TRADES_PER_DAY
+                )
+                agent = TradingAgent(state.agent_id, strategy, exchange, guardrails, AsyncSessionLocal)
+                agent._broadcaster = self._broadcaster
+                self._agents[state.agent_id] = agent
+
+                # If it was mid-run when server died, mark it stopped
+                if state.status == "running":
+                    state.status = "stopped"
+                    state.updated_at = datetime.utcnow()
+
             await session.commit()
 
     async def create_agent(self, strategy_name: str, params: dict, budget: float) -> str:
