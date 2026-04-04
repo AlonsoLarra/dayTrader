@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Play, Square, Skull, ChevronDown, ChevronUp } from 'lucide-react';
+import { Play, Square, Skull, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import type { Agent, AgentLog } from '../types';
 import { BudgetGauge } from './BudgetGauge';
-import { startAgent, stopAgent, killAgent, getAgentLogs } from '../api/client';
+import { startAgent, stopAgent, killAgent, deleteAgent, getAgentLogs } from '../api/client';
 
 interface Props {
   agent: Agent;
@@ -42,6 +42,7 @@ export function AgentCard({ agent, onUpdate }: Props) {
   const handleStart = () => handleAction(() => startAgent(agent.agent_id), 'Start');
   const handleStop = () => handleAction(() => stopAgent(agent.agent_id), 'Stop');
   const handleKill = () => handleAction(() => killAgent(agent.agent_id), 'Kill');
+  const handleDelete = () => handleAction(() => deleteAgent(agent.agent_id), 'Delete');
 
   const toggleExpand = async () => {
     const opening = !expanded;
@@ -122,6 +123,16 @@ export function AgentCard({ agent, onUpdate }: Props) {
               title="Kill agent permanently"
             >
               <Skull size={14} />
+            </button>
+          )}
+          {(agent.status === 'killed' || agent.status === 'stopped') && (
+            <button
+              onClick={handleDelete}
+              disabled={loading}
+              className="p-1.5 rounded bg-gray-600 hover:bg-red-700 text-gray-400 hover:text-white disabled:opacity-50"
+              title="Delete agent"
+            >
+              <Trash2 size={14} />
             </button>
           )}
           <button

@@ -15,6 +15,7 @@ export const startAgent = (id: string) => api.post(`/agents/${id}/start`).then(r
 export const stopAgent = (id: string) => api.post(`/agents/${id}/stop`).then(r => r.data);
 export const killAgent = (id: string) => api.post(`/agents/${id}/kill`).then(r => r.data);
 export const killAllAgents = () => api.post('/agents/kill-all').then(r => r.data);
+export const deleteAgent = (id: string) => api.delete(`/agents/${id}`).then(r => r.data);
 export const getAgentLogs = (id: string, skip = 0, limit = 50) =>
   api.get<AgentLog[]>(`/agents/${id}/logs`, { params: { skip, limit } }).then(r => r.data);
 

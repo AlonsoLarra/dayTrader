@@ -54,10 +54,10 @@ async def list_agents(db: AsyncSession = Depends(get_db)):
 @router.post("")
 async def create_agent(req: CreateAgentRequest, db: AsyncSession = Depends(get_db)):
     try:
-        agent_id = await orchestrator.create_agent(req.strategy, req.params, req.budget, req.symbol)
+        agent_id, chosen_strategy = await orchestrator.create_agent(req.strategy, req.params, req.budget, req.symbol)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"agent_id": agent_id, "status": "created"}
+    return {"agent_id": agent_id, "strategy": chosen_strategy, "status": "created"}
 
 
 @router.get("/{agent_id}")
@@ -105,6 +105,23 @@ async def kill_agent(agent_id: str):
 async def kill_all():
     await orchestrator.kill_all()
     return {"status": "all killed"}
+
+
+@router.delete("/{agent_id}")
+async def delete_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
+    """Remove a killed agent from the database entirely."""
+    result = await db.execute(select(AgentState).where(AgentState.agent_id == agent_id))
+    state = result.scalar_one_or_none()
+    if not state:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if state.status not in ("killed", "stopped"):
+        raise HTTPException(status_code=400, detail="Only killed or stopped agents can be deleted")
+    await db.delete(state)
+    await db.commit()
+    # Also remove from orchestrator memory
+    orchestrator._agents.pop(agent_id, None)
+    orchestrator._tasks.pop(agent_id, None)
+    return {"status": "deleted"}
 
 
 @router.get("/{agent_id}/logs")
