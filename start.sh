@@ -9,6 +9,12 @@ if [ ! -f "$SCRIPT_DIR/.env" ]; then
     cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env"
 fi
 
+# Kill any stale processes on our ports
+echo "Cleaning up stale processes..."
+lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+lsof -ti:5173 | xargs kill -9 2>/dev/null || true
+sleep 1
+
 cleanup() {
     echo ""
     echo "Shutting down..."
