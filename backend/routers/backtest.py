@@ -1,9 +1,9 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.strategies.ma_crossover import MACrossoverStrategy
-from backend.strategies.rsi import RSIStrategy
-from backend.backtester.runner import BacktestRunner
+from strategies.ma_crossover import MACrossoverStrategy
+from strategies.rsi import RSIStrategy
+from backtester.runner import BacktestRunner
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 

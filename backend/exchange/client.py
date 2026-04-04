@@ -1,7 +1,7 @@
 import asyncio
 import ccxt
-from backend.config import settings
-from backend.exchange.paper_trading import PaperExchange
+from config import settings
+from exchange.paper_trading import PaperExchange
 
 
 def create_exchange():

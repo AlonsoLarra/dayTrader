@@ -2,7 +2,7 @@ import ccxt
 import numpy as np
 from datetime import datetime
 
-from backend.strategies.base import BaseStrategy, Signal
+from strategies.base import BaseStrategy, Signal
 
 
 class BacktestRunner:

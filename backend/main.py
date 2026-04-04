@@ -2,10 +2,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.database import init_db
-from backend.routers import agents, trades, backtest, ws
-from backend.agents.orchestrator import orchestrator
-from backend.routers.ws import manager
+from database import init_db
+from routers import agents, trades, backtest, ws
+from agents.orchestrator import orchestrator
+from routers.ws import manager
 
 
 @asynccontextmanager

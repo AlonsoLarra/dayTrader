@@ -5,14 +5,14 @@ from typing import Optional
 
 from sqlalchemy import select
 
-from backend.database import AsyncSessionLocal
-from backend.models import AgentState
-from backend.agents.agent import TradingAgent
-from backend.strategies.ma_crossover import MACrossoverStrategy
-from backend.strategies.rsi import RSIStrategy
-from backend.exchange.client import create_exchange
-from backend.risk.guardrails import RiskGuardrails
-from backend.config import settings
+from database import AsyncSessionLocal
+from models import AgentState
+from agents.agent import TradingAgent
+from strategies.ma_crossover import MACrossoverStrategy
+from strategies.rsi import RSIStrategy
+from exchange.client import create_exchange
+from risk.guardrails import RiskGuardrails
+from config import settings
 
 STRATEGY_MAP = {
     "ma_crossover": MACrossoverStrategy,

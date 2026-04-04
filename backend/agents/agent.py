@@ -5,11 +5,11 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 
-from backend.models import Trade, AgentLog, AgentState
-from backend.strategies.base import BaseStrategy, Signal
-from backend.risk.guardrails import RiskGuardrails
-from backend.exchange.client import get_ohlcv, get_ticker, place_order
-from backend.config import settings
+from models import Trade, AgentLog, AgentState
+from strategies.base import BaseStrategy, Signal
+from risk.guardrails import RiskGuardrails
+from exchange.client import get_ohlcv, get_ticker, place_order
+from config import settings
 
 
 class TradingAgent:

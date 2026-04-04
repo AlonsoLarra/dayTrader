@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy import Integer, String, Float, DateTime, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
-from backend.database import Base
+from database import Base
 
 
 class Trade(Base):

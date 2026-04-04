@@ -3,9 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 
-from backend.database import get_db
-from backend.models import AgentState, AgentLog
-from backend.agents.orchestrator import orchestrator
+from database import get_db
+from models import AgentState, AgentLog
+from agents.orchestrator import orchestrator
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 

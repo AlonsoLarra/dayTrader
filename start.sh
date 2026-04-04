@@ -28,8 +28,8 @@ source .venv/bin/activate
 echo "Installing backend dependencies..."
 pip install -r requirements.txt -q
 
-cd "$SCRIPT_DIR"
-PYTHONPATH="$SCRIPT_DIR" uvicorn backend.main:app --reload --port 8000 &
+cd "$SCRIPT_DIR/backend"
+PYTHONPATH="$SCRIPT_DIR/backend" uvicorn main:app --reload --port 8000 &
 BACKEND_PID=$!
 echo "Backend started (PID $BACKEND_PID) at http://localhost:8000"
 

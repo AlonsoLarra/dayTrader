@@ -1,5 +1,5 @@
 import numpy as np
-from backend.strategies.base import BaseStrategy, Signal, StrategyResult
+from strategies.base import BaseStrategy, Signal, StrategyResult
 
 
 class RSIStrategy(BaseStrategy):
