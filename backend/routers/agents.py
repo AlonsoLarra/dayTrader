@@ -70,9 +70,12 @@ async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
         "agent_id": state.agent_id,
         "strategy": state.strategy,
         "status": state.status,
+        "symbol": state.symbol,
         "budget_allocated": state.budget_allocated,
         "budget_used": state.budget_used,
         "trades_today": state.trades_today,
+        "last_signal": state.last_signal,
+        "last_tick_at": state.last_tick_at.isoformat() if state.last_tick_at else None,
         "created_at": state.created_at.isoformat() if state.created_at else None,
     }
 

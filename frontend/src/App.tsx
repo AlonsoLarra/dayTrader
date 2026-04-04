@@ -5,6 +5,7 @@ import { Dashboard } from './components/Dashboard';
 import { BacktestPanel } from './components/BacktestPanel';
 import { TradeLog } from './components/TradeLog';
 import { KillSwitch } from './components/KillSwitch';
+import { PriceBoard } from './components/PriceBoard';
 import { useWebSocket } from './hooks/useWebSocket';
 import { getTrades, getAgents } from './api/client';
 import type { Trade, Agent } from './types';
@@ -72,7 +73,12 @@ export default function App() {
 
       {/* Content */}
       <main className="max-w-7xl mx-auto p-6">
-        {tab === 'dashboard' && <Dashboard lastWsMessage={lastMessage} />}
+        {tab === 'dashboard' && (
+          <div className="space-y-6">
+            <PriceBoard />
+            <Dashboard lastWsMessage={lastMessage} />
+          </div>
+        )}
         {tab === 'backtest' && <BacktestPanel />}
         {tab === 'logs' && <TradeLog trades={trades} />}
       </main>

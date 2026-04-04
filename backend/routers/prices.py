@@ -1,0 +1,56 @@
+from fastapi import APIRouter
+from datetime import datetime
+import ccxt
+
+router = APIRouter(prefix="/api/prices", tags=["prices"])
+
+SYMBOLS = ["BTC/MXN", "ETH/MXN", "SOL/MXN", "XRP/MXN", "AVAX/MXN", "LTC/MXN"]
+
+_exchange = ccxt.bitso({"enableRateLimit": True})
+
+_price_cache: dict = {}
+_cache_ts: datetime | None = None
+_CACHE_TTL_SECONDS = 15
+
+
+@router.get("")
+async def get_prices():
+    global _price_cache, _cache_ts
+
+    now = datetime.utcnow()
+    if _cache_ts and (now - _cache_ts).total_seconds() < _CACHE_TTL_SECONDS and _price_cache:
+        return {"prices": _price_cache, "timestamp": _cache_ts.isoformat()}
+
+    prices: dict = {}
+    try:
+        tickers = _exchange.fetch_tickers(SYMBOLS)
+        for symbol in SYMBOLS:
+            if symbol not in tickers:
+                continue
+            t = tickers[symbol]
+            last = t.get("last") or 0
+            open_ = t.get("open") or last
+            change_pct = ((last - open_) / open_ * 100) if open_ else 0.0
+            prices[symbol] = {
+                "last": last,
+                "change_pct": round(change_pct, 2),
+                "high": t.get("high") or 0,
+                "low": t.get("low") or 0,
+            }
+        _price_cache = prices
+        _cache_ts = now
+    except Exception:
+        prices = _price_cache or {}
+
+    return {"prices": prices, "timestamp": now.isoformat()}
+
+
+@router.get("/{symbol}/ohlcv")
+async def get_ohlcv(symbol: str, timeframe: str = "1h", limit: int = 50):
+    canonical = symbol.replace("-", "/")
+    try:
+        raw = _exchange.fetch_ohlcv(canonical, timeframe=timeframe, limit=limit)
+        data = [[c[0], c[1], c[2], c[3], c[4], c[5]] for c in raw]
+    except Exception:
+        data = []
+    return {"symbol": canonical, "timeframe": timeframe, "data": data}

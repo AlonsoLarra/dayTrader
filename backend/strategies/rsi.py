@@ -60,18 +60,18 @@ class RSIStrategy(BaseStrategy):
         current_rsi = float(rsi_values[-1])
         prev_rsi = float(rsi_values[-2])
 
-        if prev_rsi <= self.oversold and current_rsi > self.oversold:
-            confidence = min((self.oversold - prev_rsi) / self.oversold, 1.0)
+        if current_rsi < self.oversold:
+            confidence = min((self.oversold - current_rsi) / self.oversold, 1.0)
             signal = Signal.BUY
-            reasoning = f"RSI crossed above oversold ({self.oversold}): {current_rsi:.2f}"
-        elif prev_rsi <= self.overbought and current_rsi > self.overbought:
+            reasoning = f"RSI oversold at {current_rsi:.2f} (threshold: {self.oversold})"
+        elif current_rsi > self.overbought:
             confidence = min((current_rsi - self.overbought) / (100 - self.overbought), 1.0)
             signal = Signal.SELL
-            reasoning = f"RSI crossed above overbought ({self.overbought}): {current_rsi:.2f}"
+            reasoning = f"RSI overbought at {current_rsi:.2f} (threshold: {self.overbought})"
         else:
             signal = Signal.HOLD
             confidence = 0.0
-            reasoning = f"RSI at {current_rsi:.2f}, no threshold crossed"
+            reasoning = f"RSI at {current_rsi:.2f}, within neutral zone [{self.oversold}, {self.overbought}]"
 
         return StrategyResult(
             signal=signal,

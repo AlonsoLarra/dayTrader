@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db
-from routers import agents, trades, backtest, ws
+from routers import agents, trades, backtest, ws, prices
 from agents.orchestrator import orchestrator
 from routers.ws import manager
 
@@ -30,6 +30,7 @@ app.include_router(agents.router)
 app.include_router(trades.router)
 app.include_router(backtest.router)
 app.include_router(ws.router)
+app.include_router(prices.router)
 
 
 @app.get("/api/health")

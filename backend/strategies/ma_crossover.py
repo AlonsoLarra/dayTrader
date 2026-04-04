@@ -44,15 +44,15 @@ class MACrossoverStrategy(BaseStrategy):
         spread = (current_fast - current_slow) / current_slow
         confidence = min(abs(spread) * 100, 1.0)
 
-        if prev_fast <= prev_slow and current_fast > current_slow:
+        if current_fast > current_slow:
             signal = Signal.BUY
-            reasoning = f"Fast MA ({current_fast:.2f}) crossed above Slow MA ({current_slow:.2f})"
-        elif prev_fast >= prev_slow and current_fast < current_slow:
+            reasoning = f"Bullish regime: Fast MA ({current_fast:.2f}) above Slow MA ({current_slow:.2f}), spread {spread*100:.3f}%"
+        elif current_fast < current_slow:
             signal = Signal.SELL
-            reasoning = f"Fast MA ({current_fast:.2f}) crossed below Slow MA ({current_slow:.2f})"
+            reasoning = f"Bearish regime: Fast MA ({current_fast:.2f}) below Slow MA ({current_slow:.2f}), spread {spread*100:.3f}%"
         else:
             signal = Signal.HOLD
-            reasoning = f"No crossover. Fast MA: {current_fast:.2f}, Slow MA: {current_slow:.2f}"
+            reasoning = f"Fast MA equals Slow MA: {current_fast:.2f}"
             confidence = 0.0
 
         return StrategyResult(
