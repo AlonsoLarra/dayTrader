@@ -1,6 +1,7 @@
 import ccxt
 import numpy as np
 from datetime import datetime
+from typing import Optional
 
 from strategies.base import BaseStrategy, Signal
 
@@ -51,7 +52,7 @@ class BacktestRunner:
             }
 
         capital = initial_capital
-        position: dict | None = None
+        position: Optional[dict] = None
         trades: list[dict] = []
         equity_curve: list[list] = [[all_ohlcv[0][0], capital]]
 
