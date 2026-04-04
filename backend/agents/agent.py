@@ -154,6 +154,12 @@ class TradingAgent:
 
                 result = self.strategy.analyze(ohlcv)
 
+                await self._update_state(
+                    session,
+                    last_signal=result.signal.value,
+                    last_tick_at=datetime.utcnow(),
+                )
+
                 await self._log(
                     session,
                     "info",
@@ -267,7 +273,7 @@ class TradingAgent:
 
         while self._running:
             await self.tick()
-            await asyncio.sleep(60)
+            await asyncio.sleep(30)  # tick every 30 seconds
 
     async def stop(self):
         self._running = False

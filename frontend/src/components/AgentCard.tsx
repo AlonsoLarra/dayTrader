@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Play, Square, Skull, ChevronDown, ChevronUp } from 'lucide-react';
 import clsx from 'clsx';
 import type { Agent, AgentLog } from '../types';
@@ -44,7 +44,8 @@ export function AgentCard({ agent, onUpdate }: Props) {
   const handleKill = () => handleAction(() => killAgent(agent.agent_id), 'Kill');
 
   const toggleExpand = async () => {
-    if (!expanded && logs.length === 0) {
+    const opening = !expanded;
+    if (opening && logs.length === 0) {
       setLoadingLogs(true);
       try {
         const data = await getAgentLogs(agent.agent_id);
@@ -55,8 +56,20 @@ export function AgentCard({ agent, onUpdate }: Props) {
         setLoadingLogs(false);
       }
     }
-    setExpanded(!expanded);
+    setExpanded(opening);
   };
+
+  // Auto-refresh logs every 15s when expanded and running
+  useEffect(() => {
+    if (!expanded || agent.status !== 'running') return;
+    const id = setInterval(async () => {
+      try {
+        const data = await getAgentLogs(agent.agent_id);
+        setLogs(data);
+      } catch { /* ignore */ }
+    }, 15000);
+    return () => clearInterval(id);
+  }, [expanded, agent.status, agent.agent_id]);
 
   const remainingBudget = agent.budget_allocated - agent.budget_used;
 
@@ -133,6 +146,30 @@ export function AgentCard({ agent, onUpdate }: Props) {
           <div className="text-white font-mono">${remainingBudget.toFixed(2)}</div>
         </div>
       </div>
+
+      {agent.status === 'running' && (
+        <div className="flex items-center justify-between text-xs mb-2 bg-gray-900 rounded px-2 py-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-gray-400">Last signal:</span>
+            {agent.last_signal ? (
+              <span className={clsx('font-bold uppercase', {
+                'text-green-400': agent.last_signal === 'buy',
+                'text-red-400': agent.last_signal === 'sell',
+                'text-gray-400': agent.last_signal === 'hold',
+              })}>
+                {agent.last_signal}
+              </span>
+            ) : (
+              <span className="text-gray-500 animate-pulse">analyzing…</span>
+            )}
+          </div>
+          <div className="text-gray-500">
+            {agent.last_tick_at
+              ? `${Math.round((Date.now() - new Date(agent.last_tick_at).getTime()) / 1000)}s ago`
+              : 'first tick pending…'}
+          </div>
+        </div>
+      )}
 
       <BudgetGauge allocated={agent.budget_allocated} used={agent.budget_used} />
 

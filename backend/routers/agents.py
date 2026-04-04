@@ -28,6 +28,8 @@ async def list_agents(db: AsyncSession = Depends(get_db)):
             "budget_allocated": s.budget_allocated,
             "budget_used": s.budget_used,
             "trades_today": s.trades_today,
+            "last_signal": s.last_signal,
+            "last_tick_at": s.last_tick_at.isoformat() if s.last_tick_at else None,
             "created_at": s.created_at.isoformat() if s.created_at else None,
         }
         for s in states

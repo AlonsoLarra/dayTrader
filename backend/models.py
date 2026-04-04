@@ -42,5 +42,7 @@ class AgentState(Base):
     budget_allocated: Mapped[float] = mapped_column(Float, nullable=False)
     budget_used: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     trades_today: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_signal: Mapped[Optional[str]] = mapped_column(String, nullable=True)   # hold / buy / sell
+    last_tick_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
