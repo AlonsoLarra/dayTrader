@@ -27,6 +27,10 @@ export const getTrades = (params?: {
 }) => api.get<Trade[]>('/trades', { params }).then(r => r.data);
 export const getTradeSummary = () => api.get<TradeSummary>('/trades/summary').then(r => r.data);
 
+export const getWallet = () => api.get<{ balances: Record<string, { free: number; used: number; total: number }>; paper_mode: boolean }>('/settings/wallet').then(r => r.data);
+export const getMode = () => api.get<{ paper_mode: boolean; exchange: string }>('/settings/mode').then(r => r.data);
+export const setMode = (paper_mode: boolean) => api.post('/settings/mode', { paper_mode }).then(r => r.data);
+
 export const runBacktest = (data: {
   strategy: string;
   params: Record<string, number>;

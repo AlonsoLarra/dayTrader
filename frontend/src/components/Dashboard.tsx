@@ -4,6 +4,7 @@ import { getAgents, getTrades, getTradeSummary, createAgent, startAgent, getMark
 import { AgentCard } from './AgentCard';
 import { PnLChart } from './PnLChart';
 import { CreateAgentModal } from './CreateAgentModal';
+import { WalletPanel } from './WalletPanel';
 
 interface Props {
   lastWsMessage: WsMessage | null;
@@ -157,28 +158,36 @@ export function Dashboard({ lastWsMessage }: Props) {
         <PnLChart trades={trades} />
       </div>
 
-      {/* Agents */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-medium text-gray-300">Agents</h2>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded"
-          >
-            + New Agent
-          </button>
+      {/* Wallet + Agents side by side on wide screens */}
+      <div className="flex flex-col lg:flex-row gap-4">
+        {/* Wallet */}
+        <div className="lg:w-72 shrink-0">
+          <WalletPanel />
         </div>
-        {agents.length === 0 ? (
-          <div className="bg-gray-800 rounded-lg p-8 border border-gray-700 text-center text-gray-500">
-            No agents yet. Create one to get started.
+
+        {/* Agents */}
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-medium text-gray-300">Agents</h2>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded"
+            >
+              + New Agent
+            </button>
           </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {agents.map(agent => (
-              <AgentCard key={agent.agent_id} agent={agent} onUpdate={refresh} />
-            ))}
-          </div>
-        )}
+          {agents.length === 0 ? (
+            <div className="bg-gray-800 rounded-lg p-8 border border-gray-700 text-center text-gray-500">
+              No agents yet. Create one to get started.
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {agents.map(agent => (
+                <AgentCard key={agent.agent_id} agent={agent} onUpdate={refresh} />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {showCreate && (
