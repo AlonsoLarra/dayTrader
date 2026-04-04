@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case
 
 from database import get_db
 from models import Trade
@@ -14,7 +14,7 @@ async def trade_summary(db: AsyncSession = Depends(get_db)):
         select(
             func.count(Trade.id).label("total_trades"),
             func.sum(Trade.pnl).label("total_pnl"),
-            func.sum(func.case((Trade.pnl > 0, 1), else_=0)).label("winning_trades"),
+            func.sum(case((Trade.pnl > 0, 1), else_=0)).label("winning_trades"),
         ).where(Trade.pnl.is_not(None))
     )
     row = result.first()

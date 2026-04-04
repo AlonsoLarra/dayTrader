@@ -1,17 +1,19 @@
-import asyncio
 import ccxt
 import time
 from datetime import datetime
 
 
 class PaperExchange:
-    """Paper trading simulator using real market prices from Binance public API."""
+    """Paper trading simulator using real market prices from Bitso public API."""
 
-    def __init__(self, initial_balance: float = 10000.0):
-        self._binance = ccxt.binance()
+    def __init__(self, symbol: str = "BTC/MXN", initial_balance: float = 10000.0):
+        self._bitso = ccxt.bitso()
+        parts = symbol.split("/")
+        self._base = parts[0]   # e.g. BTC
+        self._quote = parts[1]  # e.g. MXN
         self.balance: dict[str, float] = {
-            "USDT": initial_balance,
-            "BTC": 0.0,
+            self._quote: initial_balance,
+            self._base: 0.0,
         }
         self.positions: dict[str, dict] = {}
         self.orders: list[dict] = []
@@ -23,19 +25,20 @@ class PaperExchange:
 
     def fetch_ticker(self, symbol: str) -> dict:
         try:
-            return self._binance.fetch_ticker(symbol)
+            return self._bitso.fetch_ticker(symbol)
         except Exception:
-            return {"last": 45000.0, "symbol": symbol, "timestamp": int(time.time() * 1000)}
+            # Fallback: approximate BTC/MXN price
+            return {"last": 1_800_000.0, "symbol": symbol, "timestamp": int(time.time() * 1000)}
 
     def fetch_ohlcv(self, symbol: str, timeframe: str = "1h", limit: int = 100) -> list:
         try:
-            return self._binance.fetch_ohlcv(symbol, timeframe, limit=limit)
+            return self._bitso.fetch_ohlcv(symbol, timeframe, limit=limit)
         except Exception:
             return []
 
     def create_order(self, symbol: str, order_type: str, side: str, amount: float, price: float = None) -> dict:
         ticker = self.fetch_ticker(symbol)
-        fill_price = price or ticker.get("last", 45000.0)
+        fill_price = price or ticker.get("last", 1_800_000.0)
 
         parts = symbol.split("/")
         base_currency = parts[0]

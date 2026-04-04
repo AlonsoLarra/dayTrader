@@ -7,7 +7,7 @@ from strategies.base import BaseStrategy, Signal
 
 class BacktestRunner:
     def __init__(self):
-        self._exchange = ccxt.binance()  # public API only
+        self._exchange = ccxt.bitso()  # public API — no auth needed for OHLCV
 
     async def run(
         self,

@@ -6,30 +6,25 @@ from exchange.paper_trading import PaperExchange
 
 def create_exchange():
     """Creates an exchange instance based on config."""
-    if settings.EXCHANGE == "paper" or settings.PAPER_MODE:
-        return PaperExchange(initial_balance=settings.INITIAL_BUDGET * 10)
+    if settings.PAPER_MODE:
+        # Paper mode: simulate trades but use real Bitso prices
+        return PaperExchange(symbol=settings.TRADING_PAIR, initial_balance=settings.INITIAL_BUDGET * 10)
     elif settings.EXCHANGE == "bitso":
-        exchange = ccxt.bitso(
+        return ccxt.bitso(
             {
                 "apiKey": settings.BITSO_API_KEY,
                 "secret": settings.BITSO_API_SECRET,
             }
         )
-        if settings.PAPER_MODE:
-            exchange.set_sandbox_mode(True)
-        return exchange
     elif settings.EXCHANGE == "binance":
-        exchange = ccxt.binance(
+        return ccxt.binance(
             {
                 "apiKey": settings.BINANCE_API_KEY,
                 "secret": settings.BINANCE_API_SECRET,
             }
         )
-        if settings.PAPER_MODE:
-            exchange.set_sandbox_mode(True)
-        return exchange
     else:
-        return PaperExchange(initial_balance=settings.INITIAL_BUDGET * 10)
+        return PaperExchange(symbol=settings.TRADING_PAIR, initial_balance=settings.INITIAL_BUDGET * 10)
 
 
 def _run_sync(fn, *args, **kwargs):

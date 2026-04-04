@@ -3,13 +3,13 @@ from pydantic import Field
 
 
 class Settings(BaseSettings):
-    EXCHANGE: str = "paper"
+    EXCHANGE: str = "bitso"
     BITSO_API_KEY: str = ""
     BITSO_API_SECRET: str = ""
     BINANCE_API_KEY: str = ""
     BINANCE_API_SECRET: str = ""
-    TRADING_PAIR: str = "BTC/USDT"
-    INITIAL_BUDGET: float = 1000.0
+    TRADING_PAIR: str = "BTC/MXN"
+    INITIAL_BUDGET: float = 10000.0
     STOP_LOSS_PCT: float = 0.03
     MAX_TRADES_PER_DAY: int = 10
     DATABASE_URL: str = "sqlite+aiosqlite:///./daytrader.db"
