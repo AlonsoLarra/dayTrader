@@ -52,7 +52,7 @@ class AgentOrchestrator:
                 guardrails = RiskGuardrails(
                     state.budget_allocated, settings.STOP_LOSS_PCT, settings.MAX_TRADES_PER_DAY
                 )
-                agent = TradingAgent(state.agent_id, strategy, exchange, guardrails, AsyncSessionLocal)
+                agent = TradingAgent(state.agent_id, strategy, exchange, guardrails, AsyncSessionLocal, symbol=state.symbol)
                 agent._broadcaster = self._broadcaster
                 self._agents[state.agent_id] = agent
 
@@ -63,17 +63,18 @@ class AgentOrchestrator:
 
             await session.commit()
 
-    async def create_agent(self, strategy_name: str, params: dict, budget: float) -> str:
+    async def create_agent(self, strategy_name: str, params: dict, budget: float, symbol: str = None) -> str:
         strategy_cls = STRATEGY_MAP.get(strategy_name)
         if not strategy_cls:
             raise ValueError(f"Unknown strategy: {strategy_name}")
 
         agent_id = str(uuid.uuid4())[:8]
+        symbol = symbol or settings.TRADING_PAIR
         strategy = strategy_cls(params)
         exchange = create_exchange()
         guardrails = RiskGuardrails(budget, settings.STOP_LOSS_PCT, settings.MAX_TRADES_PER_DAY)
 
-        agent = TradingAgent(agent_id, strategy, exchange, guardrails, AsyncSessionLocal)
+        agent = TradingAgent(agent_id, strategy, exchange, guardrails, AsyncSessionLocal, symbol=symbol)
         agent._broadcaster = self._broadcaster
 
         async with AsyncSessionLocal() as session:
@@ -84,6 +85,7 @@ class AgentOrchestrator:
                 budget_allocated=budget,
                 budget_used=0.0,
                 trades_today=0,
+                symbol=symbol,
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow(),
             )

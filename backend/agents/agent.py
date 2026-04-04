@@ -20,12 +20,14 @@ class TradingAgent:
         exchange,
         guardrails: RiskGuardrails,
         session_factory,
+        symbol: str = "BTC/MXN",
     ):
         self.agent_id = agent_id
         self.strategy = strategy
         self.exchange = exchange
         self.guardrails = guardrails
         self.session_factory = session_factory
+        self.symbol = symbol
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self.open_position: Optional[dict] = None  # {side, price, amount}
@@ -100,7 +102,7 @@ class TradingAgent:
 
                 # Check stop loss on open position
                 if self.open_position:
-                    ticker = await get_ticker(self.exchange, settings.TRADING_PAIR)
+                    ticker = await get_ticker(self.exchange, self.symbol)
                     current_price = ticker.get("last", 0)
                     if current_price and self.guardrails.check_stop_loss(
                         self.open_position["price"], current_price, self.open_position["side"]
@@ -109,7 +111,7 @@ class TradingAgent:
                         try:
                             await place_order(
                                 self.exchange,
-                                settings.TRADING_PAIR,
+                                self.symbol,
                                 close_side,
                                 self.open_position["amount"],
                             )
@@ -119,7 +121,7 @@ class TradingAgent:
 
                             trade = Trade(
                                 agent_id=self.agent_id,
-                                symbol=settings.TRADING_PAIR,
+                                symbol=self.symbol,
                                 side=close_side,
                                 amount=self.open_position["amount"],
                                 price=current_price,
@@ -147,7 +149,7 @@ class TradingAgent:
                     await self._log(session, "info", f"Cannot trade: {reason}")
                     return
 
-                ohlcv = await get_ohlcv(self.exchange, settings.TRADING_PAIR, "1h", 100)
+                ohlcv = await get_ohlcv(self.exchange, self.symbol, "1h", 100)
                 if not ohlcv:
                     await self._log(session, "warning", "Failed to fetch OHLCV data")
                     return
@@ -171,7 +173,7 @@ class TradingAgent:
                 if result.signal == Signal.HOLD:
                     return
 
-                ticker = await get_ticker(self.exchange, settings.TRADING_PAIR)
+                ticker = await get_ticker(self.exchange, self.symbol)
                 current_price = ticker.get("last", 0)
                 if not current_price:
                     await self._log(session, "error", "Could not get current price")
@@ -192,7 +194,7 @@ class TradingAgent:
                 try:
                     order = await place_order(
                         self.exchange,
-                        settings.TRADING_PAIR,
+                        self.symbol,
                         result.signal.value,
                         amount,
                     )
@@ -216,7 +218,7 @@ class TradingAgent:
 
                     trade = Trade(
                         agent_id=self.agent_id,
-                        symbol=settings.TRADING_PAIR,
+                        symbol=self.symbol,
                         side=result.signal.value,
                         amount=amount,
                         price=fill_price,
@@ -239,7 +241,7 @@ class TradingAgent:
                                 "type": "trade",
                                 "payload": {
                                     "agent_id": self.agent_id,
-                                    "symbol": settings.TRADING_PAIR,
+                                    "symbol": self.symbol,
                                     "side": result.signal.value,
                                     "amount": amount,
                                     "price": fill_price,
@@ -252,7 +254,7 @@ class TradingAgent:
                     await self._log(
                         session,
                         "trade",
-                        f"Executed {result.signal.value} {amount:.8f} {settings.TRADING_PAIR} @ {fill_price:.2f}",
+                        f"Executed {result.signal.value} {amount:.8f} {self.symbol} @ {fill_price:.2f}",
                         decision=result.signal.value,
                         reasoning=result.reasoning,
                     )

@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import text
 from config import settings
 
 engine = create_async_engine(settings.DATABASE_URL, echo=False)
@@ -23,12 +24,15 @@ def _migrate_schema(conn):
     migrations = [
         "ALTER TABLE agent_states ADD COLUMN last_signal TEXT",
         "ALTER TABLE agent_states ADD COLUMN last_tick_at DATETIME",
+        "ALTER TABLE agent_states ADD COLUMN symbol TEXT",
     ]
     for sql in migrations:
         try:
-            conn.execute(sql)
+            conn.execute(text(sql))
         except Exception:
             pass  # column already exists
+    # Backfill symbol for rows that predate this column
+    conn.execute(text("UPDATE agent_states SET symbol = 'BTC/MXN' WHERE symbol IS NULL"))
 
 
 async def get_db():

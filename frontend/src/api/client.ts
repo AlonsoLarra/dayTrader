@@ -8,8 +8,9 @@ const api = axios.create({
 
 export const getAgents = () => api.get<Agent[]>('/agents').then(r => r.data);
 export const getAgent = (id: string) => api.get<Agent>(`/agents/${id}`).then(r => r.data);
-export const createAgent = (data: { strategy: string; params: Record<string, number>; budget: number }) =>
+export const createAgent = (data: { strategy: string; params: Record<string, number>; budget: number; symbol: string }) =>
   api.post<{ agent_id: string }>('/agents', data).then(r => r.data);
+export const getMarkets = () => api.get<{ symbols: string[] }>('/agents/markets').then(r => r.data);
 export const startAgent = (id: string) => api.post(`/agents/${id}/start`).then(r => r.data);
 export const stopAgent = (id: string) => api.post(`/agents/${id}/stop`).then(r => r.data);
 export const killAgent = (id: string) => api.post(`/agents/${id}/kill`).then(r => r.data);

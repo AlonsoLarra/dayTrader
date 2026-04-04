@@ -82,6 +82,9 @@ export function AgentCard({ agent, onUpdate }: Props) {
           <span className="text-xs bg-gray-700 px-2 py-0.5 rounded text-gray-300">
             {agent.strategy}
           </span>
+          <span className="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded font-mono">
+            {agent.symbol}
+          </span>
           <span className={clsx('text-xs px-2 py-0.5 rounded font-medium', {
             'bg-green-900 text-green-300': agent.status === 'running',
             'bg-yellow-900 text-yellow-300': agent.status === 'stopped',

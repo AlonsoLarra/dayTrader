@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
+from typing import Optional
+import ccxt
 
 from database import get_db
 from models import AgentState, AgentLog
@@ -9,11 +11,23 @@ from agents.orchestrator import orchestrator
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
+SUPPORTED_SYMBOLS = [
+    "BTC/MXN", "ETH/MXN", "SOL/MXN", "XRP/MXN",
+    "AVAX/MXN", "LTC/MXN", "BCH/MXN", "MANA/MXN", "TRX/MXN", "BAT/MXN",
+]
+
+
+@router.get("/markets")
+async def list_markets():
+    """Return tradeable symbols on Bitso."""
+    return {"symbols": SUPPORTED_SYMBOLS}
+
 
 class CreateAgentRequest(BaseModel):
     strategy: str
     params: dict = {}
     budget: float = 1000.0
+    symbol: Optional[str] = None
 
 
 @router.get("")
@@ -25,6 +39,7 @@ async def list_agents(db: AsyncSession = Depends(get_db)):
             "agent_id": s.agent_id,
             "strategy": s.strategy,
             "status": s.status,
+            "symbol": s.symbol,
             "budget_allocated": s.budget_allocated,
             "budget_used": s.budget_used,
             "trades_today": s.trades_today,
@@ -39,7 +54,7 @@ async def list_agents(db: AsyncSession = Depends(get_db)):
 @router.post("")
 async def create_agent(req: CreateAgentRequest, db: AsyncSession = Depends(get_db)):
     try:
-        agent_id = await orchestrator.create_agent(req.strategy, req.params, req.budget)
+        agent_id = await orchestrator.create_agent(req.strategy, req.params, req.budget, req.symbol)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"agent_id": agent_id, "status": "created"}

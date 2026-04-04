@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import { createAgent } from '../api/client';
+import { createAgent, getMarkets } from '../api/client';
 
 interface Props {
   onClose: () => void;
@@ -9,11 +9,17 @@ interface Props {
 
 export function CreateAgentModal({ onClose, onCreate }: Props) {
   const [strategy, setStrategy] = useState('ma_crossover');
+  const [symbol, setSymbol] = useState('BTC/MXN');
   const [budget, setBudget] = useState(1000);
   const [fastPeriod, setFastPeriod] = useState(9);
   const [slowPeriod, setSlowPeriod] = useState(21);
   const [rsiPeriod, setRsiPeriod] = useState(14);
   const [loading, setLoading] = useState(false);
+  const [markets, setMarkets] = useState<string[]>(['BTC/MXN']);
+
+  useEffect(() => {
+    getMarkets().then(d => setMarkets(d.symbols)).catch(() => {});
+  }, []);
 
   const handleCreate = async () => {
     setLoading(true);
@@ -22,7 +28,7 @@ export function CreateAgentModal({ onClose, onCreate }: Props) {
         ? { fast_period: fastPeriod, slow_period: slowPeriod }
         : { period: rsiPeriod };
     try {
-      await createAgent({ strategy, params, budget });
+      await createAgent({ strategy, params, budget, symbol });
       onCreate();
     } finally {
       setLoading(false);
@@ -40,6 +46,18 @@ export function CreateAgentModal({ onClose, onCreate }: Props) {
         </div>
         <div className="space-y-4">
           <div>
+            <label className="block text-xs text-gray-400 mb-1">Trading Pair</label>
+            <select
+              value={symbol}
+              onChange={e => setSymbol(e.target.value)}
+              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm"
+            >
+              {markets.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label className="block text-xs text-gray-400 mb-1">Strategy</label>
             <select
               value={strategy}
@@ -51,7 +69,7 @@ export function CreateAgentModal({ onClose, onCreate }: Props) {
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Budget (USD)</label>
+            <label className="block text-xs text-gray-400 mb-1">Budget (MXN)</label>
             <input
               type="number"
               value={budget}

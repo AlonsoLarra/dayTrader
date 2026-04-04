@@ -2,6 +2,7 @@ export interface Agent {
   agent_id: string;
   strategy: string;
   status: 'running' | 'stopped' | 'killed';
+  symbol: string;
   budget_allocated: number;
   budget_used: number;
   trades_today: number;
