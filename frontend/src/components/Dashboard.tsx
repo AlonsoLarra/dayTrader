@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Agent, Trade, TradeSummary, WsMessage } from '../types';
-import { getAgents, getTrades, getTradeSummary } from '../api/client';
+import { getAgents, getTrades, getTradeSummary, getWallet } from '../api/client';
 import { AgentCard } from './AgentCard';
 import { PnLChart } from './PnLChart';
 import { CreateAgentModal } from './CreateAgentModal';
 import { WalletPanel } from './WalletPanel';
+import { SmartDeploy } from './SmartDeploy';
 
 interface Props {
   lastWsMessage: WsMessage | null;
@@ -15,6 +16,7 @@ export function Dashboard({ lastWsMessage }: Props) {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [summary, setSummary] = useState<TradeSummary | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
 
   const refresh = useCallback(async () => {
     const [a, t, s] = await Promise.all([
@@ -29,6 +31,9 @@ export function Dashboard({ lastWsMessage }: Props) {
 
   useEffect(() => {
     refresh();
+    getWallet()
+      .then(w => setWalletBalance(w.balances?.MXN?.free ?? 0))
+      .catch(() => setWalletBalance(0));
   }, [refresh]);
 
   useEffect(() => {
@@ -85,6 +90,9 @@ export function Dashboard({ lastWsMessage }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Smart Deploy */}
+      <SmartDeploy walletBalance={walletBalance} onDeployed={refresh} />
 
       {/* Two-column: Agents (main) + Wallet (sidebar) */}
       <div className="flex gap-6">

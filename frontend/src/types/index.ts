@@ -60,3 +60,19 @@ export interface WsMessage {
   type: 'trade' | 'log' | 'state_update' | 'price_update' | 'ping' | 'pong';
   payload?: unknown;
 }
+
+export interface PairAnalysis {
+  symbol: string;
+  score: number;
+  strategy: string;
+  reason: string;
+  rsi?: number;
+  volatility?: number;
+  ma_bullish?: boolean;
+}
+
+export interface DeployResult {
+  total_budget: number;
+  pairs: { symbol: string; score: number; strategy: string; reason: string; budget_allocated: number }[];
+  agent_ids: string[];
+}

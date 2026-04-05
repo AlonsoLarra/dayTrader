@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Agent, Trade, AgentLog, BacktestResult, TradeSummary } from '../types';
+import type { Agent, Trade, AgentLog, BacktestResult, TradeSummary, PairAnalysis, DeployResult } from '../types';
 
 const api = axios.create({
   baseURL: '/api',
@@ -40,3 +40,9 @@ export const runBacktest = (data: {
   end_date: string;
   initial_capital: number;
 }) => api.post<BacktestResult>('/backtest', data).then(r => r.data);
+
+export const analyzeMarket = (max_pairs = 10) =>
+  api.post<{ pairs: PairAnalysis[] }>('/portfolio/analyze', null, { params: { max_pairs } }).then(r => r.data);
+
+export const deployPortfolio = (data: { budget: number; max_agents: number; min_score: number }) =>
+  api.post<DeployResult>('/portfolio/deploy', data).then(r => r.data);
