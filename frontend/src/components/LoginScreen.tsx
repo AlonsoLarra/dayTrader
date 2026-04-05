@@ -17,7 +17,7 @@ export function LoginScreen({ onAuthenticated }: Props) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const API = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+  const API = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,7 +29,7 @@ export function LoginScreen({ onAuthenticated }: Props) {
     }
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/auth/check-email`, {
+      const res = await fetch(`${API}/auth/check-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: trimmed }),
@@ -60,7 +60,7 @@ export function LoginScreen({ onAuthenticated }: Props) {
     }
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/auth/set-password`, {
+      const res = await fetch(`${API}/auth/set-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
@@ -84,7 +84,7 @@ export function LoginScreen({ onAuthenticated }: Props) {
     setError('');
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/auth/login`, {
+      const res = await fetch(`${API}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
