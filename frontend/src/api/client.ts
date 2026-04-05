@@ -8,11 +8,27 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// If API_SECRET_KEY is configured in production, add Bearer token to all requests
-const apiSecret = import.meta.env.VITE_API_SECRET_KEY;
-if (apiSecret) {
-  api.defaults.headers.common['Authorization'] = `Bearer ${apiSecret}`;
-}
+// Attach JWT token from localStorage on every request
+api.interceptors.request.use(config => {
+  const token = localStorage.getItem('daytrader_token');
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers['Authorization'] = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// On 401, clear token and reload page (sends user back to login)
+api.interceptors.response.use(
+  r => r,
+  err => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('daytrader_token');
+      window.location.reload();
+    }
+    return Promise.reject(err);
+  }
+);
 
 export const getAgents = () => api.get<Agent[]>('/agents').then(r => r.data);
 export const getAgent = (id: string) => api.get<Agent>(`/agents/${id}`).then(r => r.data);

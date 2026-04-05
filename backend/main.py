@@ -1,13 +1,24 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from jose import JWTError, jwt
 
 from config import settings
 from database import init_db
 from routers import agents, trades, backtest, ws, prices, settings as settings_router, portfolio
 from routers import strategy as strategy_router
+from routers import auth as auth_router
 from agents.orchestrator import orchestrator
 from routers.ws import manager
+
+ALLOWED_EMAIL = "alonzo.larraguibel@gmail.com"
+
+import os
+_JWT_SECRET = os.environ.get("JWT_SECRET", "daytrader-local-jwt-secret-change-in-prod")
+_JWT_ALGORITHM = "HS256"
+
+# Paths that don't require auth
+_PUBLIC_PATHS = {"/api/health", "/api/auth/login", "/api/auth/check-email", "/api/auth/set-password"}
 
 
 @asynccontextmanager
@@ -31,16 +42,27 @@ app.add_middleware(
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    """Enforce Bearer token auth when API_SECRET_KEY is configured."""
-    if settings.API_SECRET_KEY:
-        # Let WebSocket and health pass through unprotected
-        if not request.url.path.startswith("/ws") and request.url.path != "/api/health":
-            auth_header = request.headers.get("Authorization", "")
-            if auth_header != f"Bearer {settings.API_SECRET_KEY}":
-                raise HTTPException(status_code=401, detail="Unauthorized")
+    """Enforce JWT auth on all routes except public paths and WebSocket."""
+    path = request.url.path
+    if path.startswith("/ws") or path in _PUBLIC_PATHS:
+        return await call_next(request)
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    token = auth_header.split(" ", 1)[1]
+    try:
+        payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
+        if payload.get("sub") != ALLOWED_EMAIL:
+            raise HTTPException(status_code=401, detail="Invalid user")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
     return await call_next(request)
 
 
+app.include_router(auth_router.router)
 app.include_router(agents.router)
 app.include_router(trades.router)
 app.include_router(backtest.router)

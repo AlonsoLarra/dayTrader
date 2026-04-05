@@ -82,19 +82,21 @@ async def scan_best_opportunity(exclude_symbol: Optional[str] = None) -> tuple:
             ohlcv = await get_ohlcv(exchange, symbol, "15m", 50)
             score = _score_pair(ohlcv)
 
-            # Determine best strategy for this pair based on volatility
+            # TrendRSI is the default — it uses trend + RSI + volume confirmation
+            # Fall back to plain RSI on very high volatility
             if len(ohlcv) >= 20:
                 closes = [c[4] for c in ohlcv]
                 rets = [abs(closes[i] - closes[i-1]) / closes[i-1] for i in range(1, len(closes))]
                 vol = float(np.std(rets)) * 100
-                if vol > 2.0:
+                if vol > 5.0:
+                    # Extreme volatility — plain RSI with tight thresholds
                     strategy_name = "rsi"
                     params = {"period": 14, "oversold": 35, "overbought": 65}
                 else:
-                    strategy_name = "ma_crossover"
-                    params = {"fast_period": 9, "slow_period": 21}
+                    strategy_name = "trend_rsi"
+                    params = {}
             else:
-                strategy_name = "ma_crossover"
+                strategy_name = "trend_rsi"
                 params = {}
 
             return symbol, strategy_name, params, score

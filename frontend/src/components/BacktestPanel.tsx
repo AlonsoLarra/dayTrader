@@ -372,30 +372,30 @@ function BacktestSection() {
 export function BacktestPanel() {
   const [bots, setBots] = useState<BotReasoning[]>([]);
   const [pairs, setPairs] = useState<PairScan[]>([]);
-  const [loadingBots, setLoadingBots] = useState(false);
-  const [loadingPairs, setLoadingPairs] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [tab, setTab] = useState<'intelligence' | 'backtest'>('intelligence');
 
-  const refresh = useCallback(async () => {
-    setLoadingBots(true);
-    setLoadingPairs(true);
+  const refresh = useCallback(async (silent = false) => {
+    if (!silent) setRefreshing(true);
     try {
       const [botsRes, pairsRes] = await Promise.all([getStrategyReasoning(), getMarketScan()]);
       setBots(botsRes.bots);
       setPairs(pairsRes.pairs);
       setLastUpdated(new Date());
+      setInitialized(true);
     } catch {
       // silent
     } finally {
-      setLoadingBots(false);
-      setLoadingPairs(false);
+      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 30_000);
+    refresh(false);
+    // 60s interval — each refresh fetches OHLCV for 6 pairs, no need to hammer Bitso
+    const interval = setInterval(() => refresh(true), 60_000);
     return () => clearInterval(interval);
   }, [refresh]);
 
@@ -420,14 +420,15 @@ export function BacktestPanel() {
             {lastUpdated && (
               <span className="text-xs text-gray-500">
                 Updated {lastUpdated.toLocaleTimeString()}
+                {refreshing && <span className="ml-1.5 inline-block w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />}
               </span>
             )}
             <button
-              onClick={refresh}
-              disabled={loadingBots}
+              onClick={() => refresh(false)}
+              disabled={refreshing}
               className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
             >
-              <RefreshCw size={14} className={loadingBots ? 'animate-spin' : ''} />
+              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
             </button>
           </div>
         )}
@@ -441,7 +442,7 @@ export function BacktestPanel() {
               <TrendingUp size={14} className="text-blue-400" />
               Bot Reasoning
             </h3>
-            {loadingBots ? (
+            {!initialized ? (
               <div className="text-xs text-gray-500 py-6 text-center">Loading bot analysis…</div>
             ) : bots.length === 0 ? (
               <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 text-center">
@@ -456,15 +457,15 @@ export function BacktestPanel() {
             )}
           </div>
 
-          {/* Market Scanner */}
-          <MarketScanner pairs={pairs} loading={loadingPairs} />
+          {/* Market Scanner — always shows stale data while refreshing */}
+          <MarketScanner pairs={pairs} loading={!initialized} />
 
           {/* Legend */}
           <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
             <h4 className="text-xs font-semibold text-gray-400 mb-2">How to read this</h4>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-500">
-              <div><span className="text-green-400 font-medium">RSI &lt; 30</span> — Oversold, bot may buy</div>
-              <div><span className="text-red-400 font-medium">RSI &gt; 70</span> — Overbought, bot may sell</div>
+              <div><span className="text-green-400 font-medium">RSI &lt; 45</span> — Oversold in uptrend, bot may buy</div>
+              <div><span className="text-red-400 font-medium">RSI &gt; 65</span> — Overbought, bot may sell</div>
               <div><span className="text-blue-400 font-medium">HOLDING</span> — Position open, watching sell target</div>
               <div><span className="text-amber-400 font-medium">WAITING</span> — No position, watching buy signal</div>
               <div><span className="text-gray-300 font-medium">Stop-loss</span> — Auto-sell at loss threshold</div>

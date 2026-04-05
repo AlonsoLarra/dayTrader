@@ -18,6 +18,8 @@ os.environ["PAPER_MODE"] = "true"
 os.environ["BITSO_API_KEY"] = ""
 os.environ["BITSO_API_SECRET"] = ""
 os.environ["OPENAI_API_KEY"] = ""
+# Use a known test secret so we can mint valid tokens
+os.environ["JWT_SECRET"] = "test-secret-for-tests-only"
 
 from database import Base, get_db  # noqa: E402
 from main import app               # noqa: E402
@@ -49,8 +51,17 @@ async def setup_database():
 @pytest_asyncio.fixture()
 async def client():
     """HTTP client bound to the FastAPI app with the test DB."""
+    from datetime import datetime, timedelta
+    from jose import jwt as _jwt
+    # Mint a valid token for the allowed user so all API calls pass auth
+    token = _jwt.encode(
+        {"sub": "alonzo.larraguibel@gmail.com", "exp": datetime.utcnow() + timedelta(days=1)},
+        "test-secret-for-tests-only",
+        algorithm="HS256",
+    )
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
+        headers={"Authorization": f"Bearer {token}"},
     ) as ac:
         yield ac

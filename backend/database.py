@@ -44,12 +44,18 @@ def _migrate_schema(conn):
         "ALTER TABLE agent_states ADD COLUMN open_position_side TEXT",
         "ALTER TABLE agent_states ADD COLUMN open_position_price REAL",
         "ALTER TABLE agent_states ADD COLUMN open_position_amount REAL",
+        # Auth table (create via raw SQL so it's not tied to SQLAlchemy models)
+        """CREATE TABLE IF NOT EXISTS auth_users (
+            email TEXT PRIMARY KEY,
+            password_hash TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
     ]
     for sql in migrations:
         try:
             conn.execute(text(sql))
         except Exception:
-            pass  # column already exists — safe to ignore on both SQLite and PostgreSQL
+            pass  # column/table already exists — safe to ignore
     # Backfill symbol for rows that predate this column
     try:
         conn.execute(text("UPDATE agent_states SET symbol = 'BTC/MXN' WHERE symbol IS NULL"))

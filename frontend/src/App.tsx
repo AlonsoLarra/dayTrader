@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, Activity, FileText, BarChart2, Zap } from 'lucide-react';
+import { TrendingUp, Activity, FileText, BarChart2, LogOut } from 'lucide-react';
 import clsx from 'clsx';
 import { Dashboard } from './components/Dashboard';
 import { BacktestPanel } from './components/BacktestPanel';
@@ -8,6 +8,7 @@ import { KillSwitch } from './components/KillSwitch';
 import { PriceBoard } from './components/PriceBoard';
 import { AutoTradeModal } from './components/AutoTradeModal';
 import { WalletHeader } from './components/WalletHeader';
+import { LoginScreen } from './components/LoginScreen';
 import { useWebSocket } from './hooks/useWebSocket';
 import { getTrades, getAgents, getPaperWallet } from './api/client';
 import type { Trade, Agent } from './types';
@@ -15,6 +16,7 @@ import type { Trade, Agent } from './types';
 type Tab = 'dashboard' | 'backtest' | 'logs';
 
 export default function App() {
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('daytrader_token'));
   const [tab, setTab] = useState<Tab>('dashboard');
   const [trades, setTrades] = useState<Trade[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -54,11 +56,20 @@ export default function App() {
 
   const hasRunningAgents = agents.some(a => a.status === 'running');
 
+  const handleLogout = () => {
+    localStorage.removeItem('daytrader_token');
+    setToken(null);
+  };
+
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <Activity size={16} /> },
     { id: 'backtest', label: 'Strategy', icon: <BarChart2 size={16} /> },
     { id: 'logs', label: 'Trades', icon: <FileText size={16} /> },
   ];
+
+  if (!token) {
+    return <LoginScreen onAuthenticated={t => setToken(t)} />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -93,12 +104,19 @@ export default function App() {
               onClick={() => setShowAutoTrade(true)}
               className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg font-medium transition-colors"
             >
-              <Zap size={14} />
-              Auto-Trade
+              ⚡ Auto-Trade
             </button>
 
             <div className="w-px h-6 bg-gray-700" />
             <KillSwitch hasRunningAgents={hasRunningAgents} onKilled={() => { refreshAll(); refreshWallet(); }} />
+            <div className="w-px h-6 bg-gray-700" />
+            <button
+              onClick={handleLogout}
+              title="Sign out"
+              className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+            >
+              <LogOut size={16} />
+            </button>
           </div>
         </div>
       </header>

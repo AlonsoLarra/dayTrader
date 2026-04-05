@@ -178,7 +178,18 @@ class TradingAgent:
                     await self._log(session, "warning", "Failed to fetch OHLCV data")
                     return
 
-                result = self.strategy.analyze(ohlcv)
+                # Pass entry context to strategies that support it (TrendRSI)
+                entry_price = self.open_position["price"] if self.open_position else None
+                candles_held = self.open_position.get("candles_held", 0) if self.open_position else 0
+                if self.open_position:
+                    self.open_position["candles_held"] = candles_held + 1
+
+                import inspect
+                sig = inspect.signature(self.strategy.analyze)
+                if "entry_price" in sig.parameters:
+                    result = self.strategy.analyze(ohlcv, entry_price=entry_price, candles_held=candles_held)
+                else:
+                    result = self.strategy.analyze(ohlcv)
 
                 await self._update_state(
                     session,
