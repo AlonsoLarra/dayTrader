@@ -142,7 +142,7 @@ class TradingAgent:
                                 strategy=self.strategy.name,
                             )
                             session.add(trade)
-                            self.open_position = None
+                            # Update DB first, then clear in-memory — keeps them in sync if DB update fails
                             await self._update_state(
                                 session,
                                 budget_used=max(0, state.budget_used - buy_cost),
@@ -151,6 +151,7 @@ class TradingAgent:
                                 open_position_price=None,
                                 open_position_amount=None,
                             )
+                            self.open_position = None
 
                             await self._log(
                                 session,
@@ -229,7 +230,6 @@ class TradingAgent:
 
                     fill_price = order.get("price", current_price)
                     fee = order.get("fee", {}).get("cost", 0.0)
-                    cost = amount * fill_price + fee  # include fee in total cost
 
                     pnl = None
                     if result.signal == Signal.SELL and self.open_position:
@@ -238,7 +238,7 @@ class TradingAgent:
                         pnl = (fill_price - self.open_position["price"]) * amount - sell_fee
                         # Return original buy cost to budget (the amount we locked up)
                         buy_cost = self.open_position.get("total_cost", self.open_position["amount"] * self.open_position["price"])
-                        self.open_position = None
+                        # Update DB first — if this fails, in-memory position is preserved (consistent)
                         await self._update_state(
                             session,
                             budget_used=max(0, state.budget_used - buy_cost),
@@ -247,15 +247,11 @@ class TradingAgent:
                             open_position_price=None,
                             open_position_amount=None,
                         )
+                        self.open_position = None
                     else:
-                        # Opening long position — record total_cost (notional + fee)
-                        self.open_position = {
-                            "side": "buy",
-                            "price": fill_price,
-                            "amount": amount,
-                            "symbol": self.symbol,
-                            "total_cost": cost,
-                        }
+                        # Opening long position — update DB first, then set in-memory
+                        # If DB update fails the exception propagates and in-memory is NOT set
+                        cost = amount * fill_price + fee  # include fee in total cost
                         await self._update_state(
                             session,
                             budget_used=state.budget_used + cost,
@@ -264,6 +260,13 @@ class TradingAgent:
                             open_position_price=fill_price,
                             open_position_amount=amount,
                         )
+                        self.open_position = {
+                            "side": "buy",
+                            "price": fill_price,
+                            "amount": amount,
+                            "symbol": self.symbol,
+                            "total_cost": cost,
+                        }
 
                     if self._broadcaster:
                         await self._broadcaster.broadcast(
@@ -353,7 +356,7 @@ class TradingAgent:
                 strategy=self.strategy.name,
             )
             session.add(trade)
-            self.open_position = None
+            # Update DB first, then clear in-memory
             await self._update_state(
                 session,
                 budget_used=max(0, (state.budget_used if state else 0) - buy_cost),
@@ -362,6 +365,7 @@ class TradingAgent:
                 open_position_price=None,
                 open_position_amount=None,
             )
+            self.open_position = None
             await self._log(
                 session, "trade",
                 f"Force-sold {amount:.8f} {self.symbol} @ {fill_price:.2f} | P&L: {pnl:+.2f} MXN",
@@ -374,7 +378,6 @@ class TradingAgent:
                 "pnl": pnl,
                 "proceeds": amount * fill_price,
             }
-            self.open_position = None
             if self._broadcaster:
                 await self._broadcaster.broadcast({"type": "trade", "payload": {**result, "agent_id": self.agent_id, "side": "sell", "timestamp": datetime.utcnow().isoformat()}})
             return result
