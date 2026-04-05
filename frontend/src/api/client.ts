@@ -1,10 +1,18 @@
 import axios from 'axios';
 import type { Agent, Trade, AgentLog, BacktestResult, TradeSummary, PairAnalysis, DeployResult, Position } from '../types';
 
+// In production, set VITE_API_BASE_URL = https://your-backend.railway.app/api
+// Locally it falls back to the Vite proxy at /api
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   headers: { 'Content-Type': 'application/json' },
 });
+
+// If API_SECRET_KEY is configured in production, add Bearer token to all requests
+const apiSecret = import.meta.env.VITE_API_SECRET_KEY;
+if (apiSecret) {
+  api.defaults.headers.common['Authorization'] = `Bearer ${apiSecret}`;
+}
 
 export const getAgents = () => api.get<Agent[]>('/agents').then(r => r.data);
 export const getAgent = (id: string) => api.get<Agent>(`/agents/${id}`).then(r => r.data);

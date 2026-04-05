@@ -3,7 +3,19 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import text
 from config import settings
 
-engine = create_async_engine(settings.DATABASE_URL, echo=False)
+# PostgreSQL needs connection pooling; SQLite doesn't support it
+if settings.is_postgres:
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        echo=False,
+        pool_size=10,
+        max_overflow=5,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
+else:
+    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 
@@ -20,11 +32,12 @@ async def init_db():
 
 
 def _migrate_schema(conn):
-    """Add new columns to existing tables without dropping data."""
+    """Add new columns to existing tables without dropping data.
+    Uses try/except so this is safe for both SQLite and PostgreSQL."""
     migrations = [
         "ALTER TABLE trades ADD COLUMN fee REAL",
         "ALTER TABLE agent_states ADD COLUMN last_signal TEXT",
-        "ALTER TABLE agent_states ADD COLUMN last_tick_at DATETIME",
+        "ALTER TABLE agent_states ADD COLUMN last_tick_at TIMESTAMP",
         "ALTER TABLE agent_states ADD COLUMN symbol TEXT",
         "ALTER TABLE agent_states ADD COLUMN open_position_side TEXT",
         "ALTER TABLE agent_states ADD COLUMN open_position_price REAL",
@@ -34,9 +47,12 @@ def _migrate_schema(conn):
         try:
             conn.execute(text(sql))
         except Exception:
-            pass  # column already exists
+            pass  # column already exists — safe to ignore on both SQLite and PostgreSQL
     # Backfill symbol for rows that predate this column
-    conn.execute(text("UPDATE agent_states SET symbol = 'BTC/MXN' WHERE symbol IS NULL"))
+    try:
+        conn.execute(text("UPDATE agent_states SET symbol = 'BTC/MXN' WHERE symbol IS NULL"))
+    except Exception:
+        pass
 
 
 async def get_db():
