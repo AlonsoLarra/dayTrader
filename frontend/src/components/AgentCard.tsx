@@ -76,72 +76,73 @@ export function AgentCard({ agent, onUpdate }: Props) {
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className={clsx('w-2 h-2 rounded-full', statusColors[agent.status])} />
-          <span className="font-mono text-sm text-gray-300">{agent.agent_id}</span>
-          <span className="text-xs bg-gray-700 px-2 py-0.5 rounded text-gray-300">
-            {agent.strategy}
-          </span>
-          <span className="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded font-mono">
-            {agent.symbol}
-          </span>
-          <span className={clsx('text-xs px-2 py-0.5 rounded font-medium', {
-            'bg-green-900 text-green-300': agent.status === 'running',
-            'bg-yellow-900 text-yellow-300': agent.status === 'stopped',
-            'bg-red-900 text-red-300': agent.status === 'killed',
-          })}>
-            {agent.status}
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          {agent.status !== 'killed' && agent.status !== 'running' && (
-            <button
-              onClick={handleStart}
-              disabled={loading}
-              className="p-1.5 rounded bg-green-700 hover:bg-green-600 text-white disabled:opacity-50"
-              title="Start agent"
-            >
-              <Play size={14} />
-            </button>
-          )}
-          {agent.status === 'running' && (
-            <button
-              onClick={handleStop}
-              disabled={loading}
-              className="p-1.5 rounded bg-yellow-700 hover:bg-yellow-600 text-white disabled:opacity-50"
-              title="Stop agent"
-            >
-              <Square size={14} />
-            </button>
-          )}
-          {agent.status !== 'killed' && (
-            <button
-              onClick={handleKill}
-              disabled={loading}
-              className="p-1.5 rounded bg-red-700 hover:bg-red-600 text-white disabled:opacity-50"
-              title="Kill agent permanently"
-            >
-              <Skull size={14} />
-            </button>
-          )}
-          {(agent.status === 'killed' || agent.status === 'stopped') && (
-            <button
-              onClick={handleDelete}
-              disabled={loading}
-              className="p-1.5 rounded bg-gray-600 hover:bg-red-700 text-gray-400 hover:text-white disabled:opacity-50"
-              title="Delete agent"
-            >
-              <Trash2 size={14} />
-            </button>
-          )}
+      {/* Row 1: identity badges */}
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <span className={clsx('w-2 h-2 rounded-full shrink-0', statusColors[agent.status])} />
+        <span className="font-mono text-sm text-gray-200 font-medium">{agent.agent_id}</span>
+        <span className="text-xs bg-gray-700 px-2 py-0.5 rounded text-gray-400">
+          {agent.strategy}
+        </span>
+        <span className="text-xs bg-blue-900/60 text-blue-300 px-2 py-0.5 rounded font-mono">
+          {agent.symbol}
+        </span>
+        <span className={clsx('text-xs px-2 py-0.5 rounded font-medium', {
+          'bg-green-900/60 text-green-300': agent.status === 'running',
+          'bg-amber-900/60 text-amber-300': agent.status === 'stopped',
+          'bg-red-900/60 text-red-400': agent.status === 'killed',
+        })}>
+          {agent.status}
+        </span>
+      </div>
+
+      {/* Row 2: action buttons right-aligned */}
+      <div className="flex items-center justify-end gap-1 mb-3">
+        {agent.status !== 'killed' && agent.status !== 'running' && (
           <button
-            onClick={toggleExpand}
-            className="p-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
+            onClick={handleStart}
+            disabled={loading}
+            className="p-1.5 rounded bg-green-700 hover:bg-green-600 text-white disabled:opacity-50"
+            title="Start agent"
           >
-            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            <Play size={13} />
           </button>
-        </div>
+        )}
+        {agent.status === 'running' && (
+          <button
+            onClick={handleStop}
+            disabled={loading}
+            className="p-1.5 rounded bg-amber-700 hover:bg-amber-600 text-white disabled:opacity-50"
+            title="Stop agent"
+          >
+            <Square size={13} />
+          </button>
+        )}
+        {agent.status !== 'killed' && (
+          <button
+            onClick={handleKill}
+            disabled={loading}
+            className="p-1.5 rounded bg-red-800 hover:bg-red-700 text-white disabled:opacity-50"
+            title="Terminate agent"
+          >
+            <Skull size={13} />
+          </button>
+        )}
+        {(agent.status === 'killed' || agent.status === 'stopped') && (
+          <button
+            onClick={handleDelete}
+            disabled={loading}
+            className="p-1.5 rounded bg-gray-700 hover:bg-red-800 text-gray-400 hover:text-white disabled:opacity-50"
+            title="Delete agent"
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
+        <button
+          onClick={toggleExpand}
+          className="p-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-400"
+        >
+          {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+        </button>
       </div>
 
       {error && (
