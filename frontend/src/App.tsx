@@ -28,6 +28,12 @@ export default function App() {
     refreshAll();
   }, [refreshAll]);
 
+  useEffect(() => {
+    if (lastMessage && ['trade', 'state_update'].includes(lastMessage.type)) {
+      refreshAll();
+    }
+  }, [lastMessage, refreshAll]);
+
   const hasRunningAgents = agents.some(a => a.status === 'running');
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
