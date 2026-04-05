@@ -20,6 +20,7 @@ export interface Trade {
   price: number;
   timestamp: string;
   pnl: number | null;
+  fee: number | null;
   mode: 'paper' | 'live';
   strategy: string;
 }
@@ -48,12 +49,27 @@ export interface BacktestResult {
 export interface TradeSummary {
   total_trades: number;
   total_pnl: number;
+  total_fees: number;
   win_rate: number;
   winning_trades: number;
   total_allocated: number;
   total_deployed: number;
   total_agents: number;
   running_agents: number;
+}
+
+export interface Position {
+  agent_id: string;
+  symbol: string;
+  strategy: string;
+  side: string;
+  amount: number;
+  entry_price: number;
+  current_price: number | null;
+  unrealized_pnl: number | null;
+  pnl_pct: number | null;
+  proceeds_if_sold: number | null;
+  cost_basis: number;
 }
 
 export interface WsMessage {

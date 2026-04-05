@@ -7,6 +7,7 @@ import ccxt
 
 from database import get_db
 from models import AgentState, AgentLog
+from routers.settings import get_available_budget
 from agents.orchestrator import orchestrator
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -53,12 +54,60 @@ async def list_agents(db: AsyncSession = Depends(get_db)):
 
 @router.post("")
 async def create_agent(req: CreateAgentRequest, db: AsyncSession = Depends(get_db)):
+    available = await get_available_budget(db)
+    if req.budget > available:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient wallet balance. Requested ${req.budget:.2f} MXN but only ${available:.2f} MXN available.",
+        )
     try:
         agent_id, chosen_strategy = await orchestrator.create_agent(req.strategy, req.params, req.budget, req.symbol)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"agent_id": agent_id, "strategy": chosen_strategy, "status": "created"}
 
+
+
+@router.post("/kill-all")
+async def kill_all():
+    await orchestrator.kill_all()
+    return {"status": "all killed"}
+
+
+@router.get("/positions")
+async def get_all_positions():
+    """Return all open positions across all running agents with current price."""
+    from exchange.client import get_ticker, create_exchange
+    positions = []
+    exchange = create_exchange()
+    for agent_id, agent in orchestrator._agents.items():
+        if agent.open_position:
+            pos = agent.open_position
+            try:
+                ticker = await get_ticker(exchange, agent.symbol)
+                current_price = ticker.get("last", 0)
+                unrealized_pnl = (current_price - pos["price"]) * pos["amount"] if current_price else None
+                proceeds = current_price * pos["amount"] if current_price else None
+                pnl_pct = ((current_price - pos["price"]) / pos["price"] * 100) if current_price and pos["price"] else None
+            except Exception:
+                current_price = None
+                unrealized_pnl = None
+                proceeds = None
+                pnl_pct = None
+            positions.append({
+                "agent_id": agent_id,
+                "symbol": agent.symbol,
+                "strategy": agent.strategy.name,
+                "side": pos["side"],
+                "amount": pos["amount"],
+                "entry_price": pos["price"],
+                "current_price": current_price,
+                "unrealized_pnl": unrealized_pnl,
+                "pnl_pct": pnl_pct,
+                "proceeds_if_sold": proceeds,
+                "cost_basis": pos["amount"] * pos["price"],
+            })
+    return {"positions": positions}
 
 @router.get("/{agent_id}")
 async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
@@ -101,10 +150,19 @@ async def kill_agent(agent_id: str):
     return {"status": "killed"}
 
 
-@router.post("/kill-all")
-async def kill_all():
-    await orchestrator.kill_all()
-    return {"status": "all killed"}
+
+
+@router.post("/{agent_id}/force-sell")
+async def force_sell(agent_id: str):
+    """Manually close an agent's open position at market price."""
+    agent = orchestrator._agents.get(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    try:
+        result = await agent.force_sell()
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/{agent_id}")

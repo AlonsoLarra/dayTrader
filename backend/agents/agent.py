@@ -100,6 +100,12 @@ class TradingAgent:
                     self._running = False
                     return
 
+                # Daily reset: if last tick was on a different UTC date, reset trades_today
+                now_date = datetime.utcnow().date()
+                if state.last_tick_at and state.last_tick_at.date() < now_date:
+                    await self._update_state(session, trades_today=0)
+                    state = await self._get_state(session)
+
                 # Check stop loss on open position
                 if self.open_position:
                     ticker = await get_ticker(self.exchange, self.symbol)
@@ -109,29 +115,42 @@ class TradingAgent:
                     ):
                         close_side = "sell" if self.open_position["side"] == "buy" else "buy"
                         try:
-                            await place_order(
+                            sl_order = await place_order(
                                 self.exchange,
                                 self.symbol,
                                 close_side,
                                 self.open_position["amount"],
                             )
-                            pnl = (current_price - self.open_position["price"]) * self.open_position["amount"]
+                            sl_fill = sl_order.get("price", current_price)
+                            sl_fee = sl_order.get("fee", {}).get("cost", 0.0)
+                            pnl = (sl_fill - self.open_position["price"]) * self.open_position["amount"] - sl_fee
                             if close_side == "buy":
                                 pnl = -pnl
+
+                            buy_cost = self.open_position.get("total_cost", self.open_position["amount"] * self.open_position["price"])
 
                             trade = Trade(
                                 agent_id=self.agent_id,
                                 symbol=self.symbol,
                                 side=close_side,
                                 amount=self.open_position["amount"],
-                                price=current_price,
+                                price=sl_fill,
                                 timestamp=datetime.utcnow(),
                                 pnl=pnl,
+                                fee=sl_fee,
                                 mode="paper" if settings.PAPER_MODE else "live",
                                 strategy=self.strategy.name,
                             )
                             session.add(trade)
-                            await session.commit()
+                            self.open_position = None
+                            await self._update_state(
+                                session,
+                                budget_used=max(0, state.budget_used - buy_cost),
+                                trades_today=state.trades_today + 1,
+                                open_position_side=None,
+                                open_position_price=None,
+                                open_position_amount=None,
+                            )
 
                             await self._log(
                                 session,
@@ -140,7 +159,6 @@ class TradingAgent:
                                 decision="stop_loss",
                                 reasoning=f"Loss exceeded {self.guardrails.stop_loss_pct * 100:.1f}%",
                             )
-                            self.open_position = None
                         except Exception as e:
                             await self._log(session, "error", f"Stop loss order failed: {e}")
 
@@ -179,17 +197,27 @@ class TradingAgent:
                     await self._log(session, "error", "Could not get current price")
                     return
 
+                # Long-only spot trading:
+                # BUY only if we have no open position
+                # SELL only if we have an open long position to close
+                if result.signal == Signal.BUY and self.open_position:
+                    await self._log(session, "info", "Already holding a long position, skipping BUY")
+                    return
+
+                if result.signal == Signal.SELL and not self.open_position:
+                    await self._log(session, "info", "No open position to sell")
+                    return
+
                 available_budget = state.budget_allocated - state.budget_used
-                amount = self.guardrails.calculate_position_size(available_budget, current_price)
 
-                if amount <= 0:
-                    await self._log(session, "warning", "Calculated position size is 0")
-                    return
-
-                # Don't trade same direction as open position
-                if self.open_position and self.open_position["side"] == result.signal.value:
-                    await self._log(session, "info", f"Already have open {result.signal.value} position")
-                    return
+                if result.signal == Signal.BUY:
+                    amount = self.guardrails.calculate_position_size(available_budget, current_price, self.symbol)
+                    if amount <= 0:
+                        await self._log(session, "info", f"Insufficient budget for minimum order size on {self.symbol}")
+                        return
+                else:
+                    # Selling: use the exact amount we hold
+                    amount = self.open_position["amount"]
 
                 try:
                     order = await place_order(
@@ -200,40 +228,42 @@ class TradingAgent:
                     )
 
                     fill_price = order.get("price", current_price)
-                    cost = amount * fill_price
+                    fee = order.get("fee", {}).get("cost", 0.0)
+                    cost = amount * fill_price + fee  # include fee in total cost
 
                     pnl = None
-                    if self.open_position and result.signal.value != self.open_position["side"]:
-                        if result.signal == Signal.SELL:
-                            pnl = (fill_price - self.open_position["price"]) * amount
-                        else:
-                            pnl = (self.open_position["price"] - fill_price) * amount
+                    if result.signal == Signal.SELL and self.open_position:
+                        # P&L = proceeds - fee - original cost (including buy fee)
+                        sell_fee = order.get("fee", {}).get("cost", 0.0)
+                        pnl = (fill_price - self.open_position["price"]) * amount - sell_fee
+                        # Return original buy cost to budget (the amount we locked up)
+                        buy_cost = self.open_position.get("total_cost", self.open_position["amount"] * self.open_position["price"])
                         self.open_position = None
+                        await self._update_state(
+                            session,
+                            budget_used=max(0, state.budget_used - buy_cost),
+                            trades_today=state.trades_today + 1,
+                            open_position_side=None,
+                            open_position_price=None,
+                            open_position_amount=None,
+                        )
                     else:
+                        # Opening long position — record total_cost (notional + fee)
                         self.open_position = {
-                            "side": result.signal.value,
+                            "side": "buy",
                             "price": fill_price,
                             "amount": amount,
+                            "symbol": self.symbol,
+                            "total_cost": cost,
                         }
-
-                    trade = Trade(
-                        agent_id=self.agent_id,
-                        symbol=self.symbol,
-                        side=result.signal.value,
-                        amount=amount,
-                        price=fill_price,
-                        timestamp=datetime.utcnow(),
-                        pnl=pnl,
-                        mode="paper" if settings.PAPER_MODE else "live",
-                        strategy=self.strategy.name,
-                    )
-                    session.add(trade)
-
-                    await self._update_state(
-                        session,
-                        budget_used=state.budget_used + cost,
-                        trades_today=state.trades_today + 1,
-                    )
+                        await self._update_state(
+                            session,
+                            budget_used=state.budget_used + cost,
+                            trades_today=state.trades_today + 1,
+                            open_position_side="buy",
+                            open_position_price=fill_price,
+                            open_position_amount=amount,
+                        )
 
                     if self._broadcaster:
                         await self._broadcaster.broadcast(
@@ -246,15 +276,32 @@ class TradingAgent:
                                     "amount": amount,
                                     "price": fill_price,
                                     "pnl": pnl,
+                                    "fee": fee,
                                     "timestamp": datetime.utcnow().isoformat(),
                                 },
                             }
                         )
 
+                    # Persist trade record
+                    trade = Trade(
+                        agent_id=self.agent_id,
+                        symbol=self.symbol,
+                        side=result.signal.value,
+                        amount=amount,
+                        price=fill_price,
+                        timestamp=datetime.utcnow(),
+                        pnl=pnl,
+                        fee=fee,
+                        mode="paper" if settings.PAPER_MODE else "live",
+                        strategy=self.strategy.name,
+                    )
+                    session.add(trade)
+                    await session.commit()
+
                     await self._log(
                         session,
                         "trade",
-                        f"Executed {result.signal.value} {amount:.8f} {self.symbol} @ {fill_price:.2f}",
+                        f"Executed {result.signal.value} {amount:.8f} {self.symbol} @ {fill_price:.2f} | fee: ${fee:.2f} MXN",
                         decision=result.signal.value,
                         reasoning=result.reasoning,
                     )
@@ -277,6 +324,61 @@ class TradingAgent:
             await self.tick()
             await asyncio.sleep(30)  # tick every 30 seconds
 
+    async def force_sell(self) -> dict:
+        """Manually close the open position at market price."""
+        if not self.open_position:
+            raise ValueError("No open position to sell")
+        async with self.session_factory() as session:
+            state = await self._get_state(session)
+            ticker = await get_ticker(self.exchange, self.symbol)
+            current_price = ticker.get("last", 0)
+            if not current_price:
+                raise ValueError("Could not fetch current price")
+            amount = self.open_position["amount"]
+            order = await place_order(self.exchange, self.symbol, "sell", amount)
+            fill_price = order.get("price", current_price)
+            fee = order.get("fee", {}).get("cost", 0.0)
+            pnl = (fill_price - self.open_position["price"]) * amount - fee
+            buy_cost = self.open_position.get("total_cost", self.open_position["amount"] * self.open_position["price"])
+            trade = Trade(
+                agent_id=self.agent_id,
+                symbol=self.symbol,
+                side="sell",
+                amount=amount,
+                price=fill_price,
+                timestamp=datetime.utcnow(),
+                pnl=pnl,
+                fee=fee,
+                mode="paper" if settings.PAPER_MODE else "live",
+                strategy=self.strategy.name,
+            )
+            session.add(trade)
+            self.open_position = None
+            await self._update_state(
+                session,
+                budget_used=max(0, (state.budget_used if state else 0) - buy_cost),
+                trades_today=(state.trades_today + 1) if state else 1,
+                open_position_side=None,
+                open_position_price=None,
+                open_position_amount=None,
+            )
+            await self._log(
+                session, "trade",
+                f"Force-sold {amount:.8f} {self.symbol} @ {fill_price:.2f} | P&L: {pnl:+.2f} MXN",
+                decision="force_sell", reasoning="Manual close by user",
+            )
+            result = {
+                "symbol": self.symbol,
+                "amount": amount,
+                "price": fill_price,
+                "pnl": pnl,
+                "proceeds": amount * fill_price,
+            }
+            self.open_position = None
+            if self._broadcaster:
+                await self._broadcaster.broadcast({"type": "trade", "payload": {**result, "agent_id": self.agent_id, "side": "sell", "timestamp": datetime.utcnow().isoformat()}})
+            return result
+
     async def stop(self):
         self._running = False
         if self._task:
@@ -288,6 +390,11 @@ class TradingAgent:
         self._running = False
         if self._task:
             self._task.cancel()
-        self.open_position = None
+        # Auto-close any open position before killing
+        if self.open_position:
+            try:
+                await self.force_sell()
+            except Exception:
+                pass  # Best effort — still kill even if sell fails
         async with self.session_factory() as session:
             await self._update_state(session, status="killed")

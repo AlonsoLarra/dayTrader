@@ -1,11 +1,14 @@
 import asyncio
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from config import settings
 from exchange.client import create_exchange, get_ohlcv
 from agents.orchestrator import orchestrator
+from database import get_db
+from routers.settings import get_available_budget
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
@@ -137,12 +140,19 @@ async def analyze_market(max_pairs: int = 10):
 
 
 @router.post("/deploy")
-async def deploy_portfolio(req: DeployRequest):
+async def deploy_portfolio(req: DeployRequest, db: AsyncSession = Depends(get_db)):
     """Analyze market, pick best pairs, create + start agents."""
-    if req.budget < 50:
-        raise HTTPException(status_code=400, detail="Minimum budget is $50 MXN")
+    if req.budget < 10:
+        raise HTTPException(status_code=400, detail="Minimum budget is $10 MXN")
     if req.max_agents < 1 or req.max_agents > 6:
         raise HTTPException(status_code=400, detail="max_agents must be 1–6")
+
+    available = await get_available_budget(db)
+    if req.budget > available:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient wallet balance. Requested ${req.budget:.2f} MXN but only ${available:.2f} MXN available.",
+        )
 
     exchange = create_exchange()
     symbols = [

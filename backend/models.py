@@ -16,6 +16,7 @@ class Trade(Base):
     price: Mapped[float] = mapped_column(Float, nullable=False)
     timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     pnl: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    fee: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     mode: Mapped[str] = mapped_column(String, nullable=False, default="paper")  # paper / live
     strategy: Mapped[str] = mapped_column(String, nullable=False)
 
@@ -45,5 +46,16 @@ class AgentState(Base):
     last_signal: Mapped[Optional[str]] = mapped_column(String, nullable=True)   # hold / buy / sell
     last_tick_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     symbol: Mapped[str] = mapped_column(String, nullable=False, default="BTC/MXN")
+    open_position_side: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    open_position_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    open_position_amount: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class PaperWallet(Base):
+    __tablename__ = "paper_wallet"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    starting_balance: Mapped[float] = mapped_column(Float, nullable=False, default=100.0)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

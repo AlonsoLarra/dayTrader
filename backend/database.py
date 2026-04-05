@@ -22,9 +22,13 @@ async def init_db():
 def _migrate_schema(conn):
     """Add new columns to existing tables without dropping data."""
     migrations = [
+        "ALTER TABLE trades ADD COLUMN fee REAL",
         "ALTER TABLE agent_states ADD COLUMN last_signal TEXT",
         "ALTER TABLE agent_states ADD COLUMN last_tick_at DATETIME",
         "ALTER TABLE agent_states ADD COLUMN symbol TEXT",
+        "ALTER TABLE agent_states ADD COLUMN open_position_side TEXT",
+        "ALTER TABLE agent_states ADD COLUMN open_position_price REAL",
+        "ALTER TABLE agent_states ADD COLUMN open_position_amount REAL",
     ]
     for sql in migrations:
         try:

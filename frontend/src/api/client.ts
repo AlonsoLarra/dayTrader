@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Agent, Trade, AgentLog, BacktestResult, TradeSummary, PairAnalysis, DeployResult } from '../types';
+import type { Agent, Trade, AgentLog, BacktestResult, TradeSummary, PairAnalysis, DeployResult, Position } from '../types';
 
 const api = axios.create({
   baseURL: '/api',
@@ -46,3 +46,22 @@ export const analyzeMarket = (max_pairs = 10) =>
 
 export const deployPortfolio = (data: { budget: number; max_agents: number; min_score: number }) =>
   api.post<DeployResult>('/portfolio/deploy', data).then(r => r.data);
+
+export const getPositions = () =>
+  api.get<{ positions: Position[] }>('/agents/positions').then(r => r.data);
+
+export const forceSell = (agentId: string) =>
+  api.post<{ symbol: string; amount: number; price: number; pnl: number; proceeds: number }>(`/agents/${agentId}/force-sell`).then(r => r.data);
+
+export interface PaperWalletData {
+  starting_balance: number;
+  deployed: number;
+  in_market: number;
+  available: number;
+}
+
+export const getPaperWallet = () =>
+  api.get<PaperWalletData>('/settings/paper-wallet').then(r => r.data);
+
+export const setPaperWallet = (starting_balance: number) =>
+  api.post<{ starting_balance: number }>('/settings/paper-wallet', { starting_balance }).then(r => r.data);

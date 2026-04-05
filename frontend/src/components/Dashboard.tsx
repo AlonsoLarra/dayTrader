@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Agent, Trade, TradeSummary, WsMessage } from '../types';
-import { getAgents, getTrades, getTradeSummary, getWallet } from '../api/client';
+import { getAgents, getTrades, getTradeSummary } from '../api/client';
 import { AgentCard } from './AgentCard';
 import { PnLChart } from './PnLChart';
 import { CreateAgentModal } from './CreateAgentModal';
-import { WalletPanel } from './WalletPanel';
-import { SmartDeploy } from './SmartDeploy';
+import { PositionsPanel } from './PositionsPanel';
 
 interface Props {
   lastWsMessage: WsMessage | null;
@@ -16,7 +15,6 @@ export function Dashboard({ lastWsMessage }: Props) {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [summary, setSummary] = useState<TradeSummary | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [walletBalance, setWalletBalance] = useState<number>(0);
 
   const refresh = useCallback(async () => {
     const [a, t, s] = await Promise.all([
@@ -29,12 +27,7 @@ export function Dashboard({ lastWsMessage }: Props) {
     setSummary(s);
   }, []);
 
-  useEffect(() => {
-    refresh();
-    getWallet()
-      .then(w => setWalletBalance(w.balances?.MXN?.free ?? 0))
-      .catch(() => setWalletBalance(0));
-  }, [refresh]);
+  useEffect(() => { refresh(); }, [refresh]);
 
   useEffect(() => {
     if (lastWsMessage && ['trade', 'state_update'].includes(lastWsMessage.type)) {
@@ -64,6 +57,11 @@ export function Dashboard({ lastWsMessage }: Props) {
             <div className={`text-xs mt-0.5 ${pnlPositive ? 'text-green-500' : 'text-red-500'}`}>
               {pnlPositive ? '+' : ''}{pnlPct.toFixed(2)}% on capital
             </div>
+            {(summary?.total_fees ?? 0) > 0 && (
+              <div className="text-xs text-gray-600 mt-0.5">
+                −${(summary?.total_fees ?? 0).toFixed(2)} fees paid
+              </div>
+            )}
           </div>
           <div>
             <div className="text-xs text-gray-500 mb-1">Capital Deployed</div>
@@ -91,39 +89,31 @@ export function Dashboard({ lastWsMessage }: Props) {
         </div>
       </div>
 
-      {/* Smart Deploy */}
-      <SmartDeploy walletBalance={walletBalance} onDeployed={refresh} />
 
-      {/* Two-column: Agents (main) + Wallet (sidebar) */}
-      <div className="flex gap-6">
-        {/* Agents — main content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-gray-200 uppercase tracking-wide">Agents</h2>
-            <button
-              onClick={() => setShowCreate(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium"
-            >
-              + New Agent
-            </button>
+      {/* Open positions */}
+      <PositionsPanel onSold={refresh} refreshTrigger={agents.filter(a => a.status === 'running').length} />
+      {/* Agents */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-gray-200 uppercase tracking-wide">Agents</h2>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium"
+          >
+            + New Agent
+          </button>
+        </div>
+        {agents.length === 0 ? (
+          <div className="bg-gray-800 rounded-lg p-8 border border-gray-700 text-center text-gray-500 text-sm">
+            No agents yet. Use <span className="text-blue-400 font-medium">Auto-Trade</span> in the header or click <span className="text-blue-400 font-medium">+ New Agent</span>.
           </div>
-          {agents.length === 0 ? (
-            <div className="bg-gray-800 rounded-lg p-8 border border-gray-700 text-center text-gray-500 text-sm">
-              No agents yet. Click <span className="text-blue-400 font-medium">+ New Agent</span> to get started.
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {agents.map(agent => (
-                <AgentCard key={agent.agent_id} agent={agent} onUpdate={refresh} />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Wallet — right sidebar */}
-        <div className="w-72 shrink-0">
-          <WalletPanel />
-        </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {agents.map(agent => (
+              <AgentCard key={agent.agent_id} agent={agent} onUpdate={refresh} />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* P&L chart — full width */}

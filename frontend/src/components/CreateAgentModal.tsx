@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import { createAgent, getMarkets } from '../api/client';
+import { createAgent, getMarkets, getPaperWallet } from '../api/client';
 
 interface Props {
   onClose: () => void;
@@ -31,13 +31,18 @@ const STRATEGIES = [
 export function CreateAgentModal({ onClose, onCreate }: Props) {
   const [strategy, setStrategy] = useState('auto');
   const [symbol, setSymbol] = useState('BTC/MXN');
-  const [budget, setBudget] = useState(1000);
+  const [budget, setBudget] = useState(50);
+  const [available, setAvailable] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [markets, setMarkets] = useState<string[]>(['BTC/MXN']);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getMarkets().then(d => setMarkets(d.symbols)).catch(() => {});
+    getPaperWallet().then(d => {
+      setAvailable(d.available);
+      setBudget(Math.max(1, Math.floor(d.available)));
+    }).catch(() => {});
   }, []);
 
   const handleCreate = async () => {
@@ -73,12 +78,20 @@ export function CreateAgentModal({ onClose, onCreate }: Props) {
             <input
               type="number"
               value={budget}
-              min={100}
+              min={1}
+              max={available ?? undefined}
               onChange={e => setBudget(Number(e.target.value))}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm"
-              placeholder="e.g. 1000"
+              className={`w-full bg-gray-700 border rounded px-3 py-2 text-white text-sm ${available !== null && budget > available ? 'border-red-500' : 'border-gray-600'}`}
+              placeholder="e.g. 50"
             />
-            <p className="text-xs text-gray-500 mt-1">Paper money — no real funds at risk until you enable live mode.</p>
+            <div className="flex justify-between text-xs mt-1">
+              <p className="text-gray-500">Paper money — no real funds at risk until you enable live mode.</p>
+              {available !== null && (
+                <span className={budget > available ? 'text-red-400' : 'text-gray-500'}>
+                  ${available.toFixed(2)} available
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Trading Pair */}
@@ -134,7 +147,7 @@ export function CreateAgentModal({ onClose, onCreate }: Props) {
 
           <button
             onClick={handleCreate}
-            disabled={loading || budget < 100}
+            disabled={loading || budget <= 0 || (available !== null && budget > available)}
             className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 text-white rounded-lg font-medium text-sm transition-colors"
           >
             {loading ? 'Creating…' : 'Deploy Agent'}
