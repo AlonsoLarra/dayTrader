@@ -39,29 +39,50 @@ export function Dashboard({ lastWsMessage }: Props) {
 
   const runningAgents = agents.filter(a => a.status === 'running').length;
 
+  const pnl = summary?.total_pnl ?? 0;
+  const pnlPct = summary?.total_allocated
+    ? (pnl / summary.total_allocated) * 100
+    : 0;
+  const pnlPositive = pnl >= 0;
+
   return (
     <div className="space-y-6">
-      {/* Stats row */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-          <div className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-1">Total P&amp;L</div>
-          <div
-            className={`text-2xl font-bold ${
-              (summary?.total_pnl ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'
-            }`}
-          >
-            ${(summary?.total_pnl ?? 0).toFixed(2)}
+      {/* Portfolio overview */}
+      <div className="bg-gray-800 rounded-lg border border-gray-700 p-5">
+        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Portfolio Overview</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div>
+            <div className="text-xs text-gray-500 mb-1">Realized P&amp;L</div>
+            <div className={`text-2xl font-bold tabular-nums ${pnlPositive ? 'text-green-400' : 'text-red-400'}`}>
+              {pnlPositive ? '+' : ''}${pnl.toFixed(2)}
+            </div>
+            <div className={`text-xs mt-0.5 ${pnlPositive ? 'text-green-500' : 'text-red-500'}`}>
+              {pnlPositive ? '+' : ''}{pnlPct.toFixed(2)}% on capital
+            </div>
           </div>
-        </div>
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-          <div className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-1">Active Agents</div>
-          <div className="text-2xl font-bold text-blue-400">
-            {runningAgents} / {agents.length}
+          <div>
+            <div className="text-xs text-gray-500 mb-1">Capital Deployed</div>
+            <div className="text-2xl font-bold text-white tabular-nums">
+              ${(summary?.total_allocated ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 0 })}
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">MXN paper budget</div>
           </div>
-        </div>
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-          <div className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-1">Total Trades</div>
-          <div className="text-2xl font-bold text-white">{summary?.total_trades ?? 0}</div>
+          <div>
+            <div className="text-xs text-gray-500 mb-1">Win Rate</div>
+            <div className="text-2xl font-bold text-white tabular-nums">
+              {(summary?.win_rate ?? 0).toFixed(0)}%
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              {summary?.winning_trades ?? 0} / {summary?.total_trades ?? 0} trades won
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-500 mb-1">Active Agents</div>
+            <div className="text-2xl font-bold text-blue-400 tabular-nums">
+              {summary?.running_agents ?? runningAgents} / {summary?.total_agents ?? agents.filter(a => a.status !== 'killed').length}
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">running agents</div>
+          </div>
         </div>
       </div>
 

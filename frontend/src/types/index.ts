@@ -50,6 +50,10 @@ export interface TradeSummary {
   total_pnl: number;
   win_rate: number;
   winning_trades: number;
+  total_allocated: number;
+  total_deployed: number;
+  total_agents: number;
+  running_agents: number;
 }
 
 export interface WsMessage {

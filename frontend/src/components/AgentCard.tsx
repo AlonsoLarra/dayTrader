@@ -151,14 +151,20 @@ export function AgentCard({ agent, onUpdate }: Props) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 text-sm mb-2">
+      <div className="grid grid-cols-3 gap-3 text-sm mb-2">
         <div>
-          <div className="text-gray-400 text-xs">Trades Today</div>
-          <div className="text-white font-mono">{agent.trades_today}</div>
+          <div className="text-gray-500 text-xs">Budget</div>
+          <div className="text-white font-mono text-sm">${agent.budget_allocated.toLocaleString()}</div>
         </div>
         <div>
-          <div className="text-gray-400 text-xs">Remaining Budget</div>
-          <div className="text-white font-mono">${remainingBudget.toFixed(2)}</div>
+          <div className="text-gray-500 text-xs">Remaining</div>
+          <div className={clsx('font-mono text-sm', remainingBudget < agent.budget_allocated * 0.5 ? 'text-amber-400' : 'text-white')}>
+            ${remainingBudget.toFixed(0)}
+          </div>
+        </div>
+        <div>
+          <div className="text-gray-500 text-xs">Trades</div>
+          <div className="text-white font-mono text-sm">{agent.trades_today}</div>
         </div>
       </div>
 
