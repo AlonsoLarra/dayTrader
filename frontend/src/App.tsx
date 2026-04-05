@@ -24,6 +24,13 @@ export default function App() {
   const [showAutoTrade, setShowAutoTrade] = useState(false);
   const { lastMessage } = useWebSocket();
 
+  // Listen for 401 logout signal from axios interceptor
+  useEffect(() => {
+    const onLogout = () => setToken(null);
+    window.addEventListener('daytrader:logout', onLogout);
+    return () => window.removeEventListener('daytrader:logout', onLogout);
+  }, []);
+
   const refreshAll = useCallback(async () => {
     const [t, a] = await Promise.all([getTrades({ limit: 500 }), getAgents()]);
     setTrades(t);

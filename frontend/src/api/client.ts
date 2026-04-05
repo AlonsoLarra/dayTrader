@@ -18,13 +18,13 @@ api.interceptors.request.use(config => {
   return config;
 });
 
-// On 401, clear token and reload page (sends user back to login)
+// On 401, clear token and signal logout via custom event (no reload — that causes an infinite loop)
 api.interceptors.response.use(
   r => r,
   err => {
     if (err.response?.status === 401) {
       localStorage.removeItem('daytrader_token');
-      window.location.reload();
+      window.dispatchEvent(new Event('daytrader:logout'));
     }
     return Promise.reject(err);
   }
