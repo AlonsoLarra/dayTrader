@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Bot, Activity, FileText } from 'lucide-react';
+import { TrendingUp, Activity, FileText, BarChart2 } from 'lucide-react';
 import clsx from 'clsx';
 import { Dashboard } from './components/Dashboard';
 import { BacktestPanel } from './components/BacktestPanel';
@@ -32,7 +32,7 @@ export default function App() {
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <Activity size={16} /> },
-    { id: 'backtest', label: 'Backtest', icon: <Bot size={16} /> },
+    { id: 'backtest', label: 'Backtest', icon: <BarChart2 size={16} /> },
     { id: 'logs', label: 'Trades', icon: <FileText size={16} /> },
   ];
 
@@ -41,8 +41,12 @@ export default function App() {
       {/* Top nav */}
       <nav className="bg-gray-800 border-b border-gray-700 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="text-xl font-bold">🤖 dayTrader</span>
-          <span className="text-xs px-2 py-1 rounded font-bold bg-blue-900 text-blue-300">
+          <div className="flex items-center gap-2">
+            <TrendingUp size={20} className="text-blue-400" />
+            <span className="text-base font-bold tracking-tight">dayTrader</span>
+          </div>
+          <span className="flex items-center gap-1.5 text-xs font-medium text-amber-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
             PAPER
           </span>
         </div>

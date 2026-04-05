@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Wallet, RefreshCw, AlertTriangle, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Wallet, RefreshCw, AlertTriangle, Shield } from 'lucide-react';
 import { getWallet, getMode, setMode } from '../api/client';
 
 interface Balance {
@@ -60,8 +60,7 @@ export function WalletPanel() {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Wallet size={18} className="text-blue-400" />
-          <h3 className="text-white font-semibold">Bitso Wallet</h3>
-          <span className="text-xs text-gray-500">(real balance)</span>
+          <h3 className="text-sm font-semibold text-gray-200 uppercase tracking-wide">Bitso Account</h3>
         </div>
         <button
           onClick={loadWallet}
@@ -72,32 +71,29 @@ export function WalletPanel() {
         </button>
       </div>
 
-      {/* Live / Paper toggle */}
-      <div
-        className={`flex items-center justify-between rounded-lg p-3 mb-4 border cursor-pointer ${
-          paperMode
-            ? 'bg-gray-900 border-gray-600'
-            : 'bg-orange-900/30 border-orange-600'
-        }`}
-        onClick={!toggling ? handleToggleMode : undefined}
-      >
-        <div>
-          <div className="text-sm font-medium text-white">
-            {paperMode ? '🧪 Paper Mode (Safe)' : '🔴 Live Trading (Real Money)'}
-          </div>
-          <div className="text-xs text-gray-400 mt-0.5">
-            {paperMode
-              ? 'Agents trade with simulated money. Click to enable live mode.'
-              : 'Agents will place real orders on Bitso. Click to switch back to paper.'}
-          </div>
-        </div>
-        <div className="ml-3 shrink-0">
+      {/* Mode toggle */}
+      <div className="flex items-center justify-between py-2 border-b border-gray-700 mb-3">
+        <div className="flex items-center gap-2">
           {paperMode ? (
-            <ToggleLeft size={28} className="text-gray-400" />
+            <Shield size={14} className="text-blue-400" />
           ) : (
-            <ToggleRight size={28} className="text-orange-400" />
+            <AlertTriangle size={14} className="text-orange-400" />
           )}
+          <span className="text-sm font-medium text-white">{paperMode ? 'Paper Mode' : 'Live Trading'}</span>
         </div>
+        <button
+          onClick={!toggling ? handleToggleMode : undefined}
+          disabled={toggling}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 ${
+            paperMode ? 'bg-gray-600' : 'bg-orange-500'
+          }`}
+        >
+          <span
+            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+              paperMode ? 'translate-x-1' : 'translate-x-4'
+            }`}
+          />
+        </button>
       </div>
 
       {!paperMode && (

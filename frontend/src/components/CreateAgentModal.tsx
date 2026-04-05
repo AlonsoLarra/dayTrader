@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Info } from 'lucide-react';
+import { X } from 'lucide-react';
 import { createAgent, getMarkets } from '../api/client';
 
 interface Props {
@@ -10,18 +10,21 @@ interface Props {
 const STRATEGIES = [
   {
     value: 'auto',
-    label: '🤖 Auto (Recommended)',
+    label: 'Auto (Recommended)',
     description: 'Automatically picks the best strategy based on current market conditions. High volatility → RSI. Trending market → MA Crossover.',
+    border: 'border-l-2 border-l-blue-500',
   },
   {
     value: 'ma_crossover',
-    label: '📈 MA Crossover',
+    label: 'MA Crossover',
     description: 'Buys when the market is trending up, sells when trending down. Works best in steady trending markets.',
+    border: 'border-l-2 border-l-purple-500',
   },
   {
     value: 'rsi',
-    label: '⚡ RSI',
+    label: 'RSI',
     description: 'Buys when a coin is oversold (beaten down too much), sells when overbought. Works best in volatile, sideways markets.',
+    border: 'border-l-2 border-l-green-500',
   },
 ];
 
@@ -99,10 +102,10 @@ export function CreateAgentModal({ onClose, onCreate }: Props) {
               {STRATEGIES.map(s => (
                 <label
                   key={s.value}
-                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${s.border} ${
                     strategy === s.value
-                      ? 'border-blue-500 bg-blue-900/20'
-                      : 'border-gray-600 hover:border-gray-500'
+                      ? 'border-r border-t border-b border-blue-500 bg-blue-900/20'
+                      : 'border-r border-t border-b border-gray-600 hover:border-gray-500'
                   }`}
                 >
                   <input
@@ -123,13 +126,7 @@ export function CreateAgentModal({ onClose, onCreate }: Props) {
           </div>
 
           {/* Auto-guardrails info */}
-          <div className="bg-gray-900 rounded-lg p-3 text-xs text-gray-400 flex gap-2">
-            <Info size={14} className="text-blue-400 shrink-0 mt-0.5" />
-            <div>
-              <span className="text-gray-300 font-medium">Auto-guardrails enabled:</span>
-              {' '}Stop-loss at 3% · Max 10 trades/day · Paper mode (safe)
-            </div>
-          </div>
+          <p className="text-xs text-gray-500 mt-4">Guardrails: 3% stop-loss · max 10 trades/day · paper mode by default</p>
 
           {error && (
             <div className="text-xs text-red-400 bg-red-900/30 border border-red-800 rounded px-3 py-2">{error}</div>
@@ -140,7 +137,7 @@ export function CreateAgentModal({ onClose, onCreate }: Props) {
             disabled={loading || budget < 100}
             className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 text-white rounded-lg font-medium text-sm transition-colors"
           >
-            {loading ? 'Creating…' : `▶ Start Agent with $${budget.toLocaleString()} MXN`}
+            {loading ? 'Creating…' : 'Deploy Agent'}
           </button>
         </div>
       </div>

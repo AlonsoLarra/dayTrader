@@ -70,11 +70,9 @@ export function PriceBoard() {
   }, [selected, fetchOhlcv]);
 
   return (
-    <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 space-y-4">
-      <h2 className="text-sm font-medium text-gray-300">Live Prices</h2>
-
-      {/* Price cards */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+    <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 space-y-3">
+      {/* Compact horizontal ticker strip */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
         {SYMBOLS.map(sym => {
           const tick = prices[sym];
           const up = (tick?.change_pct ?? 0) >= 0;
@@ -83,19 +81,17 @@ export function PriceBoard() {
             <button
               key={sym}
               onClick={() => setSelected(sym)}
-              className={`rounded-lg p-2 text-left transition-colors border ${
+              className={`flex items-center gap-3 px-3 py-2 rounded border shrink-0 transition-colors ${
                 active
                   ? 'border-blue-500 bg-gray-700'
-                  : 'border-gray-600 bg-gray-750 hover:bg-gray-700'
+                  : 'border-gray-700 hover:border-gray-600 hover:bg-gray-750'
               }`}
             >
-              <div className="text-xs text-gray-400 font-medium">{sym.split('/')[0]}</div>
-              <div className="text-sm font-bold text-white truncate">
-                {tick ? fmt(tick.last) : '—'}
-              </div>
-              <div className={`text-xs font-medium ${up ? 'text-green-400' : 'text-red-400'}`}>
+              <span className="text-xs font-semibold text-gray-300 w-8">{sym.split('/')[0]}</span>
+              <span className="text-sm font-medium text-white">{tick ? fmt(tick.last) : '—'}</span>
+              <span className={`text-xs font-medium ${up ? 'text-green-400' : 'text-red-400'}`}>
                 {tick ? `${up ? '+' : ''}${tick.change_pct.toFixed(2)}%` : '—'}
-              </div>
+              </span>
             </button>
           );
         })}
@@ -103,19 +99,19 @@ export function PriceBoard() {
 
       {/* OHLCV chart */}
       <div>
-        <div className="text-xs text-gray-400 mb-2">
-          {selected} — last 50 × 1h candles (close)
+        <div className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-2">
+          {selected} · 1h candles (close)
         </div>
         {loadingChart ? (
-          <div className="h-40 flex items-center justify-center text-gray-500 text-sm">
+          <div className="h-36 flex items-center justify-center text-gray-500 text-sm">
             Loading…
           </div>
         ) : ohlcv.length === 0 ? (
-          <div className="h-40 flex items-center justify-center text-gray-500 text-sm">
+          <div className="h-36 flex items-center justify-center text-gray-500 text-sm">
             No data
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={160}>
+          <ResponsiveContainer width="100%" height={140}>
             <LineChart data={ohlcv} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
               <XAxis
                 dataKey="time"

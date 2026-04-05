@@ -33,12 +33,12 @@ export function KillSwitch({ hasRunningAgents, onKilled }: Props) {
       <button
         onClick={handleClick}
         disabled={!hasRunningAgents || loading}
-        className={`flex items-center gap-2 px-4 py-2 rounded font-bold text-sm transition-colors ${
+        className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded border transition-colors ${
           hasRunningAgents
             ? confirming
-              ? 'bg-red-700 hover:bg-red-600 text-white'
-              : 'bg-red-600 hover:bg-red-500 text-white'
-            : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+              ? 'border-red-600 text-red-300 bg-red-900/40 hover:bg-red-900/60'
+              : 'border-red-700 text-red-400 hover:bg-red-900/40'
+            : 'border-gray-700 text-gray-600 cursor-not-allowed'
         }`}
       >
         <AlertTriangle size={16} />
