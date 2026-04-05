@@ -31,18 +31,24 @@ class RiskGuardrails:
     def calculate_position_size(self, available_budget: float, price: float, symbol: str = "BTC/MXN") -> float:
         """
         Size a trade at 25% of available budget per trade (realistic for day trading).
-        Ensures the amount meets the exchange's minimum order size.
-        Returns 0.0 if the position would be too small to trade.
+        If 25% falls below the exchange minimum order size, uses the minimum directly
+        (as long as it's affordable). Returns 0.0 if even the minimum is unaffordable.
         """
         if price <= 0 or available_budget <= 0:
             return 0.0
+
+        min_amount = MIN_ORDER_AMOUNT.get(symbol, DEFAULT_MIN_AMOUNT)
 
         trade_budget = available_budget * 0.25
         amount = trade_budget / price
         amount = round(amount, 8)
 
-        min_amount = MIN_ORDER_AMOUNT.get(symbol, DEFAULT_MIN_AMOUNT)
         if amount < min_amount:
-            return 0.0  # Caller should skip trade — not enough budget for this pair
+            # 25% isn't enough — try the minimum order size
+            min_cost = min_amount * price
+            if min_cost <= available_budget:
+                amount = min_amount
+            else:
+                return 0.0  # Can't afford even the minimum — budget too small for this pair
 
-        return amount
+        return round(amount, 8)

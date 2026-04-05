@@ -19,8 +19,20 @@ def _fetch_one(symbol: str) -> dict:
     try:
         t = _exchange.fetch_ticker(symbol)
         last = t.get("last") or 0
-        open_ = t.get("open") or last
-        change_pct = ((last - open_) / open_ * 100) if open_ else 0.0
+        # Bitso doesn't expose a normalized 'open' through ccxt.
+        # Use change_24 (absolute MXN change) from the raw info payload instead.
+        info = t.get("info", {})
+        change_24 = info.get("change_24")
+        if change_24 is not None and last:
+            try:
+                change_24 = float(change_24)
+                prev = last - change_24
+                change_pct = (change_24 / prev * 100) if prev else 0.0
+            except (TypeError, ZeroDivisionError):
+                change_pct = 0.0
+        else:
+            # Fallback: try ccxt-normalized percentage field
+            change_pct = float(t.get("percentage") or 0.0)
         return symbol, {
             "last": last,
             "change_pct": round(change_pct, 2),

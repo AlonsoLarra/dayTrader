@@ -167,7 +167,7 @@ class TradingAgent:
                     await self._log(session, "info", f"Cannot trade: {reason}")
                     return
 
-                ohlcv = await get_ohlcv(self.exchange, self.symbol, "1h", 100)
+                ohlcv = await get_ohlcv(self.exchange, self.symbol, "15m", 100)
                 if not ohlcv:
                     await self._log(session, "warning", "Failed to fetch OHLCV data")
                     return
