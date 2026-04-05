@@ -73,3 +73,43 @@ export const getPaperWallet = () =>
 
 export const setPaperWallet = (starting_balance: number) =>
   api.post<{ starting_balance: number }>('/settings/paper-wallet', { starting_balance }).then(r => r.data);
+
+export interface BotReasoning {
+  agent_id: string;
+  symbol: string;
+  strategy: string;
+  current_price: number;
+  has_position: boolean;
+  entry_price: number | null;
+  unrealized_pnl: number | null;
+  stop_loss_price: number | null;
+  stop_loss_pct: number;
+  reasoning: {
+    action: string;
+    trigger: string;
+    urgency: string;
+    rsi?: number;
+    oversold?: number;
+    overbought?: number;
+    distance_to_buy?: number;
+    distance_to_sell?: number;
+    fast_ma?: number;
+    slow_ma?: number;
+    spread_pct?: number;
+    bullish?: boolean;
+  };
+  error?: string;
+}
+
+export interface PairScan {
+  symbol: string;
+  score: number;
+  rsi: number;
+  price: number;
+}
+
+export const getStrategyReasoning = () =>
+  api.get<{ bots: BotReasoning[] }>('/strategy/reasoning').then(r => r.data);
+
+export const getMarketScan = () =>
+  api.get<{ pairs: PairScan[] }>('/strategy/market-scan').then(r => r.data);

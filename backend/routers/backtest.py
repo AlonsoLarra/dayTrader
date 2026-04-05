@@ -16,7 +16,7 @@ STRATEGY_MAP = {
 class BacktestRequest(BaseModel):
     strategy: str
     params: dict = {}
-    symbol: str = "BTC/USDT"
+    symbol: str = "BTC/MXN"
     timeframe: str = "1h"
     start_date: str = "2024-01-01"
     end_date: str = "2024-06-01"

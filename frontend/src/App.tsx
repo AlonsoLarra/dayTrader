@@ -56,7 +56,7 @@ export default function App() {
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <Activity size={16} /> },
-    { id: 'backtest', label: 'Backtest', icon: <BarChart2 size={16} /> },
+    { id: 'backtest', label: 'Strategy', icon: <BarChart2 size={16} /> },
     { id: 'logs', label: 'Trades', icon: <FileText size={16} /> },
   ];
 
