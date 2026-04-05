@@ -52,7 +52,7 @@ export function CreateAgentModal({ onClose, onCreate }: Props) {
       await createAgent({ strategy, params: {}, budget, symbol });
       onCreate();
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Failed to create agent';
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Failed to deploy bot';
       setError(msg);
     } finally {
       setLoading(false);
@@ -63,7 +63,7 @@ export function CreateAgentModal({ onClose, onCreate }: Props) {
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 w-full max-w-md">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-white font-bold text-lg">New Trading Agent</h2>
+          <h2 className="text-white font-bold text-lg">New Trading Bot</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white">
             <X size={20} />
           </button>
@@ -150,7 +150,7 @@ export function CreateAgentModal({ onClose, onCreate }: Props) {
             disabled={loading || budget <= 0 || (available !== null && budget > available)}
             className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 text-white rounded-lg font-medium text-sm transition-colors"
           >
-            {loading ? 'Creating…' : 'Deploy Agent'}
+            {loading ? 'Deploying…' : 'Deploy Bot'}
           </button>
         </div>
       </div>

@@ -80,11 +80,11 @@ export function Dashboard({ lastWsMessage }: Props) {
             </div>
           </div>
           <div>
-            <div className="text-xs text-gray-500 mb-1">Active Agents</div>
+            <div className="text-xs text-gray-500 mb-1">Active Bots</div>
             <div className="text-2xl font-bold text-blue-400 tabular-nums">
               {summary?.running_agents ?? runningAgents} / {summary?.total_agents ?? agents.filter(a => a.status !== 'killed').length}
             </div>
-            <div className="text-xs text-gray-500 mt-0.5">running agents</div>
+            <div className="text-xs text-gray-500 mt-0.5">bots active</div>
           </div>
         </div>
       </div>
@@ -92,20 +92,20 @@ export function Dashboard({ lastWsMessage }: Props) {
 
       {/* Open positions */}
       <PositionsPanel onSold={refresh} refreshTrigger={agents.filter(a => a.status === 'running').length} />
-      {/* Agents */}
+      {/* Bots */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-gray-200 uppercase tracking-wide">Agents</h2>
+          <h2 className="text-sm font-semibold text-gray-200 uppercase tracking-wide">Bots</h2>
           <button
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium"
           >
-            + New Agent
+            + New Bot
           </button>
         </div>
         {agents.length === 0 ? (
           <div className="bg-gray-800 rounded-lg p-8 border border-gray-700 text-center text-gray-500 text-sm">
-            No agents yet. Use <span className="text-blue-400 font-medium">Auto-Trade</span> in the header or click <span className="text-blue-400 font-medium">+ New Agent</span>.
+            No bots yet. Use <span className="text-blue-400 font-medium">Auto-Trade</span> in the header or click <span className="text-blue-400 font-medium">+ New Bot</span>.
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

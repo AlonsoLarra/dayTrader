@@ -17,10 +17,10 @@ export function AgentCard({ agent, onUpdate }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const statusColors: Record<string, string> = {
-    running: 'bg-green-500',
-    stopped: 'bg-yellow-500',
-    killed: 'bg-red-500',
+  const statusLabel: Record<string, string> = {
+    running: 'Active',
+    stopped: 'Paused',
+    killed: 'Closed',
   };
 
   const handleAction = async (fn: () => Promise<unknown>, label: string) => {
@@ -78,7 +78,11 @@ export function AgentCard({ agent, onUpdate }: Props) {
     <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
       {/* Row 1: identity badges */}
       <div className="flex items-center gap-2 mb-2 flex-wrap">
-        <span className={clsx('w-2 h-2 rounded-full shrink-0', statusColors[agent.status])} />
+        <span className={clsx('w-2 h-2 rounded-full shrink-0', {
+          'bg-green-500': agent.status === 'running',
+          'bg-yellow-500': agent.status === 'stopped',
+          'bg-red-500': agent.status === 'killed',
+        })} />
         <span className="font-mono text-sm text-gray-200 font-medium">{agent.agent_id}</span>
         <span className="text-xs bg-gray-700 px-2 py-0.5 rounded text-gray-400">
           {agent.strategy}
@@ -91,7 +95,7 @@ export function AgentCard({ agent, onUpdate }: Props) {
           'bg-amber-900/60 text-amber-300': agent.status === 'stopped',
           'bg-red-900/60 text-red-400': agent.status === 'killed',
         })}>
-          {agent.status}
+          {statusLabel[agent.status] ?? agent.status}
         </span>
       </div>
 
@@ -102,7 +106,7 @@ export function AgentCard({ agent, onUpdate }: Props) {
             onClick={handleStart}
             disabled={loading}
             className="p-1.5 rounded bg-green-700 hover:bg-green-600 text-white disabled:opacity-50"
-            title="Start agent"
+            title="Activate bot"
           >
             <Play size={13} />
           </button>
@@ -112,7 +116,7 @@ export function AgentCard({ agent, onUpdate }: Props) {
             onClick={handleStop}
             disabled={loading}
             className="p-1.5 rounded bg-amber-700 hover:bg-amber-600 text-white disabled:opacity-50"
-            title="Stop agent"
+            title="Pause bot"
           >
             <Square size={13} />
           </button>
@@ -122,7 +126,7 @@ export function AgentCard({ agent, onUpdate }: Props) {
             onClick={handleKill}
             disabled={loading}
             className="p-1.5 rounded bg-red-800 hover:bg-red-700 text-white disabled:opacity-50"
-            title="Terminate agent"
+            title="Close bot"
           >
             <Skull size={13} />
           </button>
@@ -132,7 +136,7 @@ export function AgentCard({ agent, onUpdate }: Props) {
             onClick={handleDelete}
             disabled={loading}
             className="p-1.5 rounded bg-gray-700 hover:bg-red-800 text-gray-400 hover:text-white disabled:opacity-50"
-            title="Delete agent"
+            title="Remove bot"
           >
             <Trash2 size={13} />
           </button>
@@ -209,7 +213,7 @@ export function AgentCard({ agent, onUpdate }: Props) {
           {loadingLogs ? (
             <div className="text-gray-500 text-xs">Loading...</div>
           ) : logs.length === 0 ? (
-            <div className="text-gray-500 text-xs">No logs yet. Start the agent to see activity.</div>
+            <div className="text-gray-500 text-xs">No logs yet. Activate the bot to see activity.</div>
           ) : (
             <div className="space-y-1 max-h-40 overflow-y-auto">
               {logs.map(log => (
