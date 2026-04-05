@@ -1,5 +1,8 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings
-from pydantic import Field
+
+# .env lives at project root (one level above backend/)
+_ENV_FILE = Path(__file__).parent.parent / ".env"
 
 
 class Settings(BaseSettings):
@@ -15,7 +18,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./daytrader.db"
     PAPER_MODE: bool = True
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = {"env_file": str(_ENV_FILE), "extra": "ignore"}
 
 
 settings = Settings()
