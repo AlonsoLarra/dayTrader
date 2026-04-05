@@ -8,7 +8,7 @@ from sqlalchemy import select, update
 from models import Trade, AgentLog, AgentState
 from strategies.base import BaseStrategy, Signal
 from risk.guardrails import RiskGuardrails
-from exchange.client import get_ohlcv, get_ticker, place_order
+from exchange.client import get_ohlcv, get_ticker, place_order, create_exchange
 from config import settings
 
 
@@ -100,10 +100,10 @@ class TradingAgent:
                     self._running = False
                     return
 
-                # Daily reset: if last tick was on a different UTC date, reset trades_today
+                # Daily reset: if last tick was on a different UTC date, reset counters
                 now_date = datetime.utcnow().date()
                 if state.last_tick_at and state.last_tick_at.date() < now_date:
-                    await self._update_state(session, trades_today=0)
+                    await self._update_state(session, trades_today=0, losses_today=0, realized_pnl_today=0.0)
                     state = await self._get_state(session)
 
                 # Check stop loss on open position
@@ -142,11 +142,16 @@ class TradingAgent:
                                 strategy=self.strategy.name,
                             )
                             session.add(trade)
+                            # Stop-loss is always a loss — track it
+                            new_losses = (getattr(state, 'losses_today', 0) or 0) + 1
+                            new_pnl_today = (getattr(state, 'realized_pnl_today', 0.0) or 0.0) + pnl
                             # Update DB first, then clear in-memory — keeps them in sync if DB update fails
                             await self._update_state(
                                 session,
                                 budget_used=max(0, state.budget_used - buy_cost),
                                 trades_today=state.trades_today + 1,
+                                losses_today=new_losses,
+                                realized_pnl_today=new_pnl_today,
                                 open_position_side=None,
                                 open_position_price=None,
                                 open_position_amount=None,
@@ -236,18 +241,45 @@ class TradingAgent:
                         # P&L = proceeds - fee - original cost (including buy fee)
                         sell_fee = order.get("fee", {}).get("cost", 0.0)
                         pnl = (fill_price - self.open_position["price"]) * amount - sell_fee
-                        # Return original buy cost to budget (the amount we locked up)
                         buy_cost = self.open_position.get("total_cost", self.open_position["amount"] * self.open_position["price"])
+
+                        # Track daily loss counters
+                        new_losses = (getattr(state, 'losses_today', 0) or 0) + (1 if pnl < 0 else 0)
+                        new_pnl_today = (getattr(state, 'realized_pnl_today', 0.0) or 0.0) + pnl
+
                         # Update DB first — if this fails, in-memory position is preserved (consistent)
                         await self._update_state(
                             session,
                             budget_used=max(0, state.budget_used - buy_cost),
                             trades_today=state.trades_today + 1,
+                            losses_today=new_losses,
+                            realized_pnl_today=new_pnl_today,
                             open_position_side=None,
                             open_position_price=None,
                             open_position_amount=None,
                         )
                         self.open_position = None
+
+                        # Pair rotation: after selling, scan market for best next opportunity
+                        # Import here to avoid circular import at module level
+                        from agents.orchestrator import scan_best_opportunity, STRATEGY_MAP
+                        new_symbol, new_strat_name, new_params, score = await scan_best_opportunity(
+                            exclude_symbol=None  # include all pairs — even same one if it's best
+                        )
+                        if new_symbol != self.symbol or new_strat_name != self.strategy.name:
+                            new_strategy_cls = STRATEGY_MAP.get(new_strat_name)
+                            if new_strategy_cls:
+                                old_symbol = self.symbol
+                                self.symbol = new_symbol
+                                self.strategy = new_strategy_cls(new_params)
+                                self.exchange = create_exchange(budget=state.budget_allocated)
+                                await self._update_state(session, symbol=new_symbol, strategy=new_strat_name)
+                                await self._log(
+                                    session, "info",
+                                    f"Rotated: {old_symbol} → {new_symbol} ({new_strat_name}, score={score:.1f})",
+                                    decision="rotate",
+                                    reasoning=f"Market scan found better opportunity in {new_symbol}",
+                                )
                     else:
                         # Opening long position — update DB first, then set in-memory
                         # If DB update fails the exception propagates and in-memory is NOT set

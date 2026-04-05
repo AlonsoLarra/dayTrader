@@ -155,7 +155,7 @@ export function AgentCard({ agent, onUpdate }: Props) {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-3 text-sm mb-2">
+      <div className="grid grid-cols-4 gap-2 text-sm mb-2">
         <div>
           <div className="text-gray-500 text-xs">Budget</div>
           <div className="text-white font-mono text-sm">${agent.budget_allocated.toLocaleString()}</div>
@@ -170,7 +170,30 @@ export function AgentCard({ agent, onUpdate }: Props) {
           <div className="text-gray-500 text-xs">Trades</div>
           <div className="text-white font-mono text-sm">{agent.trades_today}</div>
         </div>
+        <div>
+          <div className="text-gray-500 text-xs">P&amp;L Today</div>
+          <div className={clsx('font-mono text-sm', {
+            'text-green-400': agent.realized_pnl_today > 0,
+            'text-red-400': agent.realized_pnl_today < 0,
+            'text-gray-400': agent.realized_pnl_today === 0,
+          })}>
+            {agent.realized_pnl_today >= 0 ? '+' : ''}${agent.realized_pnl_today.toFixed(2)}
+          </div>
+        </div>
       </div>
+
+      {/* Exit criteria warning */}
+      {agent.losses_today >= 2 && (
+        <div className={clsx('text-xs px-2 py-1 rounded mb-2', {
+          'bg-red-900/40 text-red-300 border border-red-800': agent.losses_today >= 3,
+          'bg-amber-900/30 text-amber-400 border border-amber-800': agent.losses_today === 2,
+        })}>
+          {agent.losses_today >= 3
+            ? `⛔ Daily loss limit reached — ${agent.losses_today} losses today, no new positions`
+            : `⚠ ${agent.losses_today} losses today — 1 more will pause new positions`
+          }
+        </div>
+      )}
 
       {agent.status === 'running' && (
         <div className="flex items-center justify-between text-xs mb-2 bg-gray-900 rounded px-2 py-1.5">

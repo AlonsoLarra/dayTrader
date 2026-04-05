@@ -35,6 +35,8 @@ def _migrate_schema(conn):
     """Add new columns to existing tables without dropping data.
     Uses try/except so this is safe for both SQLite and PostgreSQL."""
     migrations = [
+        "ALTER TABLE agent_states ADD COLUMN losses_today INTEGER DEFAULT 0",
+        "ALTER TABLE agent_states ADD COLUMN realized_pnl_today REAL DEFAULT 0.0",
         "ALTER TABLE trades ADD COLUMN fee REAL",
         "ALTER TABLE agent_states ADD COLUMN last_signal TEXT",
         "ALTER TABLE agent_states ADD COLUMN last_tick_at TIMESTAMP",

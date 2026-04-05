@@ -2,21 +2,42 @@ from exchange.paper_trading import MIN_ORDER_AMOUNT, DEFAULT_MIN_AMOUNT
 
 
 class RiskGuardrails:
-    def __init__(self, budget: float, stop_loss_pct: float, max_trades_per_day: int):
+    def __init__(
+        self,
+        budget: float,
+        stop_loss_pct: float,
+        max_trades_per_day: int,
+        max_losses_per_day: int = 3,
+        max_daily_loss_pct: float = 0.05,
+    ):
         self.budget = budget
         self.stop_loss_pct = stop_loss_pct
         self.max_trades_per_day = max_trades_per_day
+        self.max_losses_per_day = max_losses_per_day
+        self.max_daily_loss_pct = max_daily_loss_pct
 
     def can_trade(self, agent_state) -> tuple[bool, str]:
         if agent_state.status == "killed":
-            return False, "Agent has been killed"
+            return False, "Bot has been closed"
         if agent_state.status == "stopped":
-            return False, "Agent is stopped"
+            return False, "Bot is paused"
         if agent_state.trades_today >= self.max_trades_per_day:
             return False, f"Max trades per day ({self.max_trades_per_day}) reached"
         remaining_budget = agent_state.budget_allocated - agent_state.budget_used
         if remaining_budget <= 0:
             return False, "No remaining budget"
+
+        # Exit criteria: too many losses today
+        losses_today = getattr(agent_state, 'losses_today', 0) or 0
+        if losses_today >= self.max_losses_per_day:
+            return False, f"Daily loss limit reached: {losses_today} losing trades today (max {self.max_losses_per_day})"
+
+        # Exit criteria: daily loss % of budget exceeded
+        realized_pnl_today = getattr(agent_state, 'realized_pnl_today', 0.0) or 0.0
+        max_loss_amount = self.budget * self.max_daily_loss_pct
+        if realized_pnl_today <= -max_loss_amount:
+            return False, f"Daily loss cap hit: lost ${abs(realized_pnl_today):.2f} MXN today (max {self.max_daily_loss_pct*100:.0f}% = ${max_loss_amount:.2f})"
+
         return True, "OK"
 
     def check_stop_loss(self, entry_price: float, current_price: float, side: str) -> bool:

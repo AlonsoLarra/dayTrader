@@ -6,6 +6,8 @@ export interface Agent {
   budget_allocated: number;
   budget_used: number;
   trades_today: number;
+  losses_today: number;
+  realized_pnl_today: number;
   last_signal?: 'buy' | 'sell' | 'hold' | null;
   last_tick_at?: string | null;
   created_at?: string;

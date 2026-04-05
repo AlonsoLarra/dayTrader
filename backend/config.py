@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
     # Optional API secret — if set, all /api requests require Authorization: Bearer <key>
     API_SECRET_KEY: str = ""
+    # Exit criteria: stop opening new positions if either threshold is hit today
+    MAX_LOSSES_PER_DAY: int = 3        # max number of losing trades per bot per day
+    MAX_DAILY_LOSS_PCT: float = 0.05   # max loss as a fraction of budget (e.g. 0.05 = 5%)
 
     model_config = {"env_file": str(_ENV_FILE), "extra": "ignore"}
 

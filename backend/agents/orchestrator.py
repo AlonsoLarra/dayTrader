@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+import numpy as np
 from sqlalchemy import select
 
 from database import AsyncSessionLocal
@@ -19,32 +20,93 @@ STRATEGY_MAP = {
     "rsi": RSIStrategy,
 }
 
+ALL_PAIRS = ["BTC/MXN", "ETH/MXN", "SOL/MXN", "XRP/MXN", "AVAX/MXN", "LTC/MXN"]
 
-async def _pick_best_strategy(symbol: str) -> tuple:
-    """Auto-select strategy based on current market volatility.
-    High volatility (large price swings) → RSI catches extremes.
-    Trending market (consistent direction) → MA Crossover follows trend.
-    Returns (strategy_name, params).
+
+def _score_pair(ohlcv: list) -> float:
     """
+    Score a pair 0-100 for how attractive it is to trade right now.
+    Higher = better opportunity.
+
+    Scoring:
+    - RSI distance from the nearest extreme (oversold/overbought) → 0-60 pts
+      A coin at RSI 20 (deeply oversold) or RSI 80 (deeply overbought) scores highest.
+    - Volatility (recent price movement) → 0-40 pts
+      More movement = more opportunity to profit.
+    """
+    if len(ohlcv) < 16:
+        return 0.0
     try:
-        exchange = create_exchange()
-        ohlcv = await get_ohlcv(exchange, symbol, "1h", 50)
-        if len(ohlcv) < 20:
-            return "ma_crossover", {}
+        closes = np.array([c[4] for c in ohlcv], dtype=float)
 
-        import numpy as np
-        closes = [c[4] for c in ohlcv]
-        returns = [abs(closes[i] - closes[i-1]) / closes[i-1] for i in range(1, len(closes))]
-        volatility = float(np.std(returns)) * 100  # % volatility
+        # RSI (14-period)
+        deltas = np.diff(closes)
+        gains = np.where(deltas > 0, deltas, 0.0)
+        losses = np.where(deltas < 0, -deltas, 0.0)
+        avg_gain = float(np.mean(gains[:14]))
+        avg_loss = float(np.mean(losses[:14]))
+        for i in range(14, len(deltas)):
+            avg_gain = (avg_gain * 13 + gains[i]) / 14
+            avg_loss = (avg_loss * 13 + losses[i]) / 14
+        rs = avg_gain / avg_loss if avg_loss != 0 else 100.0
+        rsi = 100.0 - (100.0 / (1.0 + rs))
 
-        # High volatility → RSI (catches overbought/oversold extremes)
-        # Low volatility / trending → MA Crossover
-        if volatility > 2.0:
-            return "rsi", {"period": 14, "oversold": 35, "overbought": 65}
-        else:
-            return "ma_crossover", {"fast_period": 9, "slow_period": 21}
+        # Distance from neutral (50) weighted toward extremes
+        rsi_distance = abs(rsi - 50)  # 0-50 range
+        rsi_score = min(rsi_distance / 50 * 60, 60)
+
+        # Volatility over last 20 candles
+        recent = closes[-20:]
+        returns = np.abs(np.diff(recent) / recent[:-1])
+        volatility = float(np.std(returns)) * 100
+        vol_score = min(volatility / 3.0 * 40, 40)
+
+        return round(rsi_score + vol_score, 2)
     except Exception:
-        return "ma_crossover", {}
+        return 0.0
+
+
+async def scan_best_opportunity(exclude_symbol: Optional[str] = None) -> tuple:
+    """
+    Scan all trading pairs and return the best opportunity right now.
+    Returns (symbol, strategy_name, params, score).
+    Falls back to BTC/MXN with MA Crossover if all scans fail.
+    """
+    exchange = create_exchange()
+    pairs_to_scan = [p for p in ALL_PAIRS if p != exclude_symbol] + (
+        [exclude_symbol] if exclude_symbol else []
+    )
+
+    async def _score_one(symbol: str):
+        try:
+            ohlcv = await get_ohlcv(exchange, symbol, "15m", 50)
+            score = _score_pair(ohlcv)
+
+            # Determine best strategy for this pair based on volatility
+            if len(ohlcv) >= 20:
+                closes = [c[4] for c in ohlcv]
+                rets = [abs(closes[i] - closes[i-1]) / closes[i-1] for i in range(1, len(closes))]
+                vol = float(np.std(rets)) * 100
+                if vol > 2.0:
+                    strategy_name = "rsi"
+                    params = {"period": 14, "oversold": 35, "overbought": 65}
+                else:
+                    strategy_name = "ma_crossover"
+                    params = {"fast_period": 9, "slow_period": 21}
+            else:
+                strategy_name = "ma_crossover"
+                params = {}
+
+            return symbol, strategy_name, params, score
+        except Exception:
+            return symbol, "ma_crossover", {}, 0.0
+
+    results = await asyncio.gather(*[_score_one(sym) for sym in pairs_to_scan])
+
+    # Sort by score descending, pick best
+    results = sorted(results, key=lambda x: x[3], reverse=True)
+    best = results[0] if results else ("BTC/MXN", "ma_crossover", {}, 0.0)
+    return best  # (symbol, strategy_name, params, score)
 
 
 class AgentOrchestrator:
@@ -77,7 +139,11 @@ class AgentOrchestrator:
                 strategy = strategy_cls({})
                 exchange = create_exchange(budget=state.budget_allocated)
                 guardrails = RiskGuardrails(
-                    state.budget_allocated, settings.STOP_LOSS_PCT, settings.MAX_TRADES_PER_DAY
+                    state.budget_allocated,
+                    settings.STOP_LOSS_PCT,
+                    settings.MAX_TRADES_PER_DAY,
+                    settings.MAX_LOSSES_PER_DAY,
+                    settings.MAX_DAILY_LOSS_PCT,
                 )
                 agent = TradingAgent(state.agent_id, strategy, exchange, guardrails, AsyncSessionLocal, symbol=state.symbol)
                 agent._broadcaster = self._broadcaster
@@ -101,18 +167,25 @@ class AgentOrchestrator:
     async def create_agent(self, strategy_name: str, params: dict, budget: float, symbol: str = None) -> str:
         symbol = symbol or settings.TRADING_PAIR
 
-        # Auto-select strategy based on market conditions
+        # Auto-select: scan all pairs and pick the best opportunity right now
         if strategy_name == "auto":
-            strategy_name, params = await _pick_best_strategy(symbol)
-
+            best_symbol, strategy_name, params, score = await scan_best_opportunity()
+            symbol = best_symbol
+        
         strategy_cls = STRATEGY_MAP.get(strategy_name)
         if not strategy_cls:
             raise ValueError(f"Unknown strategy: {strategy_name}")
 
         agent_id = str(uuid.uuid4())[:8]
         strategy = strategy_cls(params)
-        exchange = create_exchange(budget=budget)  # seed paper exchange with agent's budget
-        guardrails = RiskGuardrails(budget, settings.STOP_LOSS_PCT, settings.MAX_TRADES_PER_DAY)
+        exchange = create_exchange(budget=budget)
+        guardrails = RiskGuardrails(
+            budget,
+            settings.STOP_LOSS_PCT,
+            settings.MAX_TRADES_PER_DAY,
+            settings.MAX_LOSSES_PER_DAY,
+            settings.MAX_DAILY_LOSS_PCT,
+        )
 
         agent = TradingAgent(agent_id, strategy, exchange, guardrails, AsyncSessionLocal, symbol=symbol)
         agent._broadcaster = self._broadcaster
@@ -125,6 +198,8 @@ class AgentOrchestrator:
                 budget_allocated=budget,
                 budget_used=0.0,
                 trades_today=0,
+                losses_today=0,
+                realized_pnl_today=0.0,
                 symbol=symbol,
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow(),
