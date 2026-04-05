@@ -38,28 +38,19 @@ async def get_wallet():
             "secret": settings.BITSO_API_SECRET,
         })
         balance = await loop.run_in_executor(None, exchange.fetch_balance)
-        # Return only non-zero balances
+        # Use ccxt-normalized format — skip meta keys
+        _skip = {"info", "free", "used", "total", "datetime", "timestamp"}
         non_zero = {
             currency: {
-                "free": float(v.get("free") or 0),
-                "used": float(v.get("used") or 0),
-                "total": float(v.get("total") or 0),
+                "free": float(vals.get("free") or 0),
+                "used": float(vals.get("used") or 0),
+                "total": float(vals.get("total") or 0),
             }
-            for currency, v in balance.get("info", {}).get("payload", [{}])[0].items()
-            if isinstance(v, dict) and float(v.get("total") or 0) > 0
+            for currency, vals in balance.items()
+            if isinstance(vals, dict)
+            and currency not in _skip
+            and float(vals.get("total") or 0) > 0
         }
-        # Fallback to ccxt-normalized format
-        if not non_zero:
-            non_zero = {
-                currency: {
-                    "free": float(vals.get("free") or 0),
-                    "used": float(vals.get("used") or 0),
-                    "total": float(vals.get("total") or 0),
-                }
-                for currency, vals in balance.items()
-                if isinstance(vals, dict) and float(vals.get("total") or 0) > 0
-                and currency not in ("info", "free", "used", "total", "datetime", "timestamp")
-            }
         return {"balances": non_zero, "paper_mode": settings.PAPER_MODE}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Bitso API error: {str(e)}")
