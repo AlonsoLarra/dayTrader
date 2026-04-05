@@ -186,7 +186,16 @@ export function AgentCard({ agent, onUpdate }: Props) {
           </div>
           <div className="text-gray-500">
             {agent.last_tick_at
-              ? `${Math.round((Date.now() - new Date(agent.last_tick_at).getTime()) / 1000)}s ago`
+              ? (() => {
+                  // Ensure UTC parsing — backend sends naive ISO strings without Z
+                  const ts = agent.last_tick_at.endsWith('Z')
+                    ? agent.last_tick_at
+                    : agent.last_tick_at + 'Z';
+                  const diffSec = Math.round((Date.now() - new Date(ts).getTime()) / 1000);
+                  if (diffSec < 5) return 'just now';
+                  if (diffSec < 60) return `${diffSec}s ago`;
+                  return `${Math.round(diffSec / 60)}m ago`;
+                })()
               : 'first tick pending…'}
           </div>
         </div>
