@@ -11,6 +11,8 @@ from models import AgentState
 from agents.agent import TradingAgent
 from strategies.ma_crossover import MACrossoverStrategy
 from strategies.rsi import RSIStrategy
+from strategies.trend_rsi import TrendRSIStrategy
+from strategies.adaptive import AdaptiveStrategy
 from exchange.client import create_exchange, get_ohlcv
 from risk.guardrails import RiskGuardrails
 from config import settings
@@ -18,6 +20,8 @@ from config import settings
 STRATEGY_MAP = {
     "ma_crossover": MACrossoverStrategy,
     "rsi": RSIStrategy,
+    "trend_rsi": TrendRSIStrategy,
+    "adaptive": AdaptiveStrategy,
 }
 
 ALL_PAIRS = ["BTC/MXN", "ETH/MXN", "SOL/MXN", "XRP/MXN", "AVAX/MXN", "LTC/MXN"]
@@ -93,7 +97,7 @@ async def scan_best_opportunity(exclude_symbol: Optional[str] = None) -> tuple:
                     strategy_name = "rsi"
                     params = {"period": 14, "oversold": 35, "overbought": 65}
                 else:
-                    strategy_name = "trend_rsi"
+                    strategy_name = "adaptive"
                     params = {}
             else:
                 strategy_name = "trend_rsi"
