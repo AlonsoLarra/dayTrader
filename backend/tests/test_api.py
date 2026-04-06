@@ -4,14 +4,39 @@ These run against an in-memory DB with no real exchange calls.
 """
 import pytest
 
+from config import settings
 
-# ── Health ───────────────────────────────────────────────────────────────────
+
+# ── Health / Auth ────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_health(client):
     r = await client.get("/api/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_auth_flow_allows_configured_owner_email(client):
+    email = settings.allowed_emails_list[0]
+
+    check = await client.post("/api/auth/check-email", json={"email": email})
+    assert check.status_code == 200
+    assert check.json()["has_password"] is False
+
+    setup = await client.post(
+        "/api/auth/set-password",
+        json={"email": email, "password": "strong-pass-123"},
+    )
+    assert setup.status_code == 200
+    assert setup.json()["token"]
+
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": email, "password": "strong-pass-123"},
+    )
+    assert login.status_code == 200
+    assert login.json()["token"]
 
 
 # ── Mode toggle ───────────────────────────────────────────────────────────────

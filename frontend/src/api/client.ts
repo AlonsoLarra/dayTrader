@@ -51,6 +51,29 @@ export const getTrades = (params?: {
 }) => api.get<Trade[]>('/trades', { params }).then(r => r.data);
 export const getTradeSummary = () => api.get<TradeSummary>('/trades/summary').then(r => r.data);
 
+export interface PriceTick {
+  last: number;
+  change_pct: number;
+  high: number;
+  low: number;
+}
+
+export interface PricesResponse {
+  prices: Record<string, PriceTick>;
+  timestamp: string;
+}
+
+export const getPrices = () => api.get<PricesResponse>('/prices').then(r => r.data);
+
+export interface OhlcvResponse {
+  symbol: string;
+  timeframe: string;
+  data: Array<[number, number, number, number, number, number]>;
+}
+
+export const getPriceOhlcv = (symbol: string, timeframe = '1h', limit = 50) =>
+  api.get<OhlcvResponse>(`/prices/${symbol.replace('/', '-')}/ohlcv`, { params: { timeframe, limit } }).then(r => r.data);
+
 export const getWallet = () => api.get<{ balances: Record<string, { free: number; used: number; total: number }>; paper_mode: boolean }>('/settings/wallet').then(r => r.data);
 export const getMode = () => api.get<{ paper_mode: boolean; exchange: string }>('/settings/mode').then(r => r.data);
 export const setMode = (paper_mode: boolean) => api.post('/settings/mode', { paper_mode }).then(r => r.data);

@@ -22,7 +22,7 @@ export default function App() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [available, setAvailable] = useState<number>(0);
   const [showAutoTrade, setShowAutoTrade] = useState(false);
-  const { lastMessage } = useWebSocket();
+  const { lastMessage } = useWebSocket(Boolean(token));
 
   // Listen for 401 logout signal from axios interceptor
   useEffect(() => {
@@ -32,9 +32,13 @@ export default function App() {
   }, []);
 
   const refreshAll = useCallback(async () => {
-    const [t, a] = await Promise.all([getTrades({ limit: 500 }), getAgents()]);
-    setTrades(t);
-    setAgents(a);
+    try {
+      const [t, a] = await Promise.all([getTrades({ limit: 500 }), getAgents()]);
+      setTrades(t);
+      setAgents(a);
+    } catch {
+      // Ignore transient auth/network failures; the login screen handles auth state.
+    }
   }, []);
 
   const refreshWallet = useCallback(async () => {
@@ -45,21 +49,24 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!token) return;
     refreshAll();
     refreshWallet();
-  }, [refreshAll, refreshWallet]);
+  }, [token, refreshAll, refreshWallet]);
 
   useEffect(() => {
+    if (!token) return;
     if (lastMessage && ['trade', 'state_update'].includes(lastMessage.type)) {
       refreshAll();
       refreshWallet();
     }
-  }, [lastMessage, refreshAll, refreshWallet]);
+  }, [token, lastMessage, refreshAll, refreshWallet]);
 
   useEffect(() => {
+    if (!token) return;
     const id = setInterval(refreshWallet, 30_000);
     return () => clearInterval(id);
-  }, [refreshWallet]);
+  }, [token, refreshWallet]);
 
   const hasRunningAgents = agents.some(a => a.status === 'running');
 

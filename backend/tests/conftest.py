@@ -21,8 +21,8 @@ os.environ["OPENAI_API_KEY"] = ""
 # Use a known test secret so we can mint valid tokens
 os.environ["JWT_SECRET"] = "test-secret-for-tests-only"
 
-from database import Base, get_db  # noqa: E402
-from main import app               # noqa: E402
+from database import Base, get_db, _migrate_schema  # noqa: E402
+from main import app                              # noqa: E402
 
 # Override the DB engine to use in-memory SQLite
 test_engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
@@ -43,6 +43,7 @@ async def setup_database():
     import models  # noqa: F401
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_migrate_schema)
     yield
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)

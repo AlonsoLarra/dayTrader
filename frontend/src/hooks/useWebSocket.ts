@@ -5,7 +5,7 @@ import type { WsMessage } from '../types';
 // Locally it falls back to localhost
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
 
-export function useWebSocket() {
+export function useWebSocket(enabled = true) {
   const [messages, setMessages] = useState<WsMessage[]>([]);
   const [lastMessage, setLastMessage] = useState<WsMessage | null>(null);
   const [readyState, setReadyState] = useState<number>(WebSocket.CONNECTING);
@@ -14,7 +14,7 @@ export function useWebSocket() {
   const reconnectDelay = useRef(1000);
 
   const connect = useCallback(() => {
-    if (ws.current?.readyState === WebSocket.OPEN) return;
+    if (!enabled || ws.current?.readyState === WebSocket.OPEN) return;
 
     try {
       const socket = new WebSocket(WS_URL);
@@ -50,15 +50,23 @@ export function useWebSocket() {
     } catch {
       // ignore connection errors - will retry
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
+    if (!enabled) {
+      if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
+      ws.current?.close();
+      ws.current = null;
+      setReadyState(WebSocket.CLOSED);
+      return;
+    }
+
     connect();
     return () => {
       if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
       ws.current?.close();
     };
-  }, [connect]);
+  }, [connect, enabled]);
 
   const sendMessage = useCallback((msg: object) => {
     if (ws.current?.readyState === WebSocket.OPEN) {

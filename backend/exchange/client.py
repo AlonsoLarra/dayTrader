@@ -4,12 +4,12 @@ from config import settings
 from exchange.paper_trading import PaperExchange
 
 
-def create_exchange(budget: float = None):
+def create_exchange(budget: float = None, symbol: str = None):
     """Creates an exchange instance based on config."""
     if settings.PAPER_MODE:
         # Seed with the agent's budget so balance is realistic
         initial = budget if budget and budget > 0 else settings.INITIAL_BUDGET
-        return PaperExchange(symbol=settings.TRADING_PAIR, initial_balance=initial)
+        return PaperExchange(symbol=symbol or settings.TRADING_PAIR, initial_balance=initial)
     elif settings.EXCHANGE == "bitso":
         return ccxt.bitso(
             {

@@ -1,7 +1,7 @@
 """
-Single-user authentication.
-Only alonzo.larraguibel@gmail.com can log in.
-First visit: set a password. Subsequent visits: check it.
+Configurable password-based authentication.
+Allowed emails come from `ALLOWED_EMAILS` in the backend environment.
+First visit: set a password. Subsequent visits: sign in with it.
 """
 import os
 from datetime import datetime, timedelta
@@ -15,17 +15,26 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
+from config import settings
 from database import get_db
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-ALLOWED_EMAIL = "alonzo.larraguibel@gmail.com"
 JWT_SECRET = os.environ.get("JWT_SECRET", "daytrader-local-jwt-secret-change-in-prod")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_DAYS = 30
 
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def _normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def _is_allowed_email(email: str) -> bool:
+    allowed_emails = settings.allowed_emails_list
+    return not allowed_emails or _normalize_email(email) in allowed_emails
 
 
 def _make_token(email: str) -> str:
@@ -42,8 +51,8 @@ def verify_token(credentials: Optional[HTTPAuthorizationCredentials] = Depends(b
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        email: str = payload.get("sub", "")
-        if email != ALLOWED_EMAIL:
+        email = _normalize_email(payload.get("sub", ""))
+        if not email or not _is_allowed_email(email):
             raise HTTPException(status_code=401, detail="Invalid user")
         return email
     except JWTError:
@@ -71,12 +80,13 @@ class SetPasswordRequest(BaseModel):
 @router.post("/check-email")
 async def check_email(req: CheckEmailRequest, db: AsyncSession = Depends(get_db)):
     """Step 1: check if this email is allowed and whether a password has been set."""
-    if req.email.strip().lower() != ALLOWED_EMAIL:
+    email = _normalize_email(req.email)
+    if not _is_allowed_email(email):
         raise HTTPException(status_code=403, detail="This email is not authorised.")
 
     row = await db.execute(
         text("SELECT password_hash FROM auth_users WHERE email = :email"),
-        {"email": ALLOWED_EMAIL},
+        {"email": email},
     )
     user = row.fetchone()
     return {"has_password": bool(user and user[0])}
@@ -84,8 +94,9 @@ async def check_email(req: CheckEmailRequest, db: AsyncSession = Depends(get_db)
 
 @router.post("/set-password")
 async def set_password(req: SetPasswordRequest, db: AsyncSession = Depends(get_db)):
-    """First-time setup: set the password for the allowed email."""
-    if req.email.strip().lower() != ALLOWED_EMAIL:
+    """First-time setup: set the password for the requested email."""
+    email = _normalize_email(req.email)
+    if not _is_allowed_email(email):
         raise HTTPException(status_code=403, detail="Not authorised.")
     if len(req.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
@@ -93,7 +104,7 @@ async def set_password(req: SetPasswordRequest, db: AsyncSession = Depends(get_d
     # Only allowed if no password is set yet
     row = await db.execute(
         text("SELECT password_hash FROM auth_users WHERE email = :email"),
-        {"email": ALLOWED_EMAIL},
+        {"email": email},
     )
     existing = row.fetchone()
     if existing and existing[0]:
@@ -103,26 +114,27 @@ async def set_password(req: SetPasswordRequest, db: AsyncSession = Depends(get_d
     if existing:
         await db.execute(
             text("UPDATE auth_users SET password_hash = :h WHERE email = :e"),
-            {"h": hashed, "e": ALLOWED_EMAIL},
+            {"h": hashed, "e": email},
         )
     else:
         await db.execute(
             text("INSERT INTO auth_users (email, password_hash) VALUES (:e, :h)"),
-            {"e": ALLOWED_EMAIL, "h": hashed},
+            {"e": email, "h": hashed},
         )
     await db.commit()
-    return {"token": _make_token(ALLOWED_EMAIL)}
+    return {"token": _make_token(email)}
 
 
 @router.post("/login")
 async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Validate email + password, return JWT."""
-    if req.email.strip().lower() != ALLOWED_EMAIL:
+    email = _normalize_email(req.email)
+    if not _is_allowed_email(email):
         raise HTTPException(status_code=403, detail="Not authorised.")
 
     row = await db.execute(
         text("SELECT password_hash FROM auth_users WHERE email = :email"),
-        {"email": ALLOWED_EMAIL},
+        {"email": email},
     )
     user = row.fetchone()
     if not user or not user[0]:
@@ -131,7 +143,7 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not pwd_ctx.verify(req.password, user[0]):
         raise HTTPException(status_code=401, detail="Incorrect password.")
 
-    return {"token": _make_token(ALLOWED_EMAIL)}
+    return {"token": _make_token(email)}
 
 
 @router.get("/me")

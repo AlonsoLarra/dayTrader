@@ -16,10 +16,24 @@ vi.mock('../api/client', () => ({
   setMode: vi.fn(),
   getPaperWallet: vi.fn(),
   setPaperWallet: vi.fn(),
+  getTrades: vi.fn(),
+  getAgents: vi.fn(),
+  getPrices: vi.fn(),
+  getPriceOhlcv: vi.fn(),
+}));
+
+vi.mock('../hooks/useWebSocket', () => ({
+  useWebSocket: () => ({
+    lastMessage: null,
+    messages: [],
+    readyState: WebSocket.CLOSED,
+    sendMessage: vi.fn(),
+  }),
 }));
 
 // Import after mock is set up so we get the mocked versions
 import * as apiMock from '../api/client';
+import App from '../App';
 
 // ── AutoTradeModal tests ──────────────────────────────────────────────────────
 
@@ -98,6 +112,32 @@ describe('AutoTradeModal', () => {
 });
 
 // ── WalletHeader tests ────────────────────────────────────────────────────────
+
+describe('App auth gate', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    (apiMock.getTrades as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (apiMock.getAgents as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (apiMock.getPaperWallet as ReturnType<typeof vi.fn>).mockResolvedValue({
+      starting_balance: 100,
+      available: 100,
+      deployed: 0,
+      in_market: 0,
+    });
+    (apiMock.getPrices as ReturnType<typeof vi.fn>).mockResolvedValue({ prices: {}, timestamp: new Date().toISOString() });
+    (apiMock.getPriceOhlcv as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTC/MXN', timeframe: '1h', data: [] });
+  });
+
+  it('shows the login screen without calling protected endpoints first', async () => {
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText(/Welcome back/i)).toBeInTheDocument());
+    expect(apiMock.getTrades).not.toHaveBeenCalled();
+    expect(apiMock.getAgents).not.toHaveBeenCalled();
+    expect(apiMock.getPaperWallet).not.toHaveBeenCalled();
+  });
+});
 
 describe('WalletHeader', () => {
   const mockWallet = {

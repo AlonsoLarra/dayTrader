@@ -1,13 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import axios from 'axios';
-
-interface PriceTick {
-  last: number;
-  change_pct: number;
-  high: number;
-  low: number;
-}
+import { getPrices, getPriceOhlcv, type PriceTick } from '../api/client';
 
 interface OhlcvCandle {
   time: string;
@@ -31,7 +24,7 @@ export function PriceBoard() {
 
   const fetchPrices = useCallback(async () => {
     try {
-      const { data } = await axios.get('/api/prices');
+      const data = await getPrices();
       setPrices(data.prices ?? {});
     } catch {
       // keep stale data
@@ -41,12 +34,9 @@ export function PriceBoard() {
   const fetchOhlcv = useCallback(async (symbol: string) => {
     setLoadingChart(true);
     try {
-      const slug = symbol.replace('/', '-');
-      const { data } = await axios.get(`/api/prices/${slug}/ohlcv`, {
-        params: { timeframe: '1h', limit: 50 },
-      });
+      const data = await getPriceOhlcv(symbol, '1h', 50);
       const candles: OhlcvCandle[] = (data.data ?? []).map(
-        ([ts, , , , close]: [number, number, number, number, number]) => ({
+        ([ts, , , , close]: [number, number, number, number, number, number]) => ({
           time: new Date(ts).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
           close,
         })

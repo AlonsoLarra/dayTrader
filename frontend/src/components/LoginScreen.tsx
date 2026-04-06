@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { TrendingUp } from 'lucide-react';
 
-const ALLOWED_EMAIL = 'alonzo.larraguibel@gmail.com';
-
 interface Props {
   onAuthenticated: (token: string) => void;
 }
@@ -23,10 +21,6 @@ export function LoginScreen({ onAuthenticated }: Props) {
     e.preventDefault();
     setError('');
     const trimmed = email.trim().toLowerCase();
-    if (trimmed !== ALLOWED_EMAIL) {
-      setError('This email is not authorised to access dayTrader.');
-      return;
-    }
     setLoading(true);
     try {
       const res = await fetch(`${API}/auth/check-email`, {

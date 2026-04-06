@@ -31,7 +31,9 @@ git push origin main
 | `BITSO_API_KEY` | your key |
 | `BITSO_API_SECRET` | your secret |
 | `CORS_ORIGINS` | `https://your-app.vercel.app` (fill in after Vercel deploy) |
-| `API_SECRET_KEY` | `$(openssl rand -hex 32)` — generate a strong key |
+| `ALLOWED_EMAILS` | `your@email.com` (or a comma-separated allowlist) |
+| `JWT_SECRET` | `$(openssl rand -hex 32)` — generate a strong signing key |
+| `API_SECRET_KEY` | optional legacy API key; usually leave blank |
 
 6. Railway will build and deploy. Copy the URL: `https://your-app.railway.app`
 
@@ -91,9 +93,11 @@ No env vars needed for local — SQLite and localhost defaults are used automati
 |---|---|---|---|
 | `DATABASE_URL` | Backend | SQLite (local) | PostgreSQL URL for production |
 | `CORS_ORIGINS` | Backend | localhost | Comma-separated allowed frontend origins |
-| `API_SECRET_KEY` | Backend | (empty) | If set, requires Bearer token on all API calls |
+| `ALLOWED_EMAILS` | Backend | owner email(s) | Comma-separated email allowlist for login |
+| `JWT_SECRET` | Backend | local dev fallback | Signs the JWT returned after login |
+| `API_SECRET_KEY` | Backend | (empty) | Optional legacy Bearer key auth |
 | `PAPER_MODE` | Backend | `true` | Safe mode — no real money traded |
 | `EXCHANGE` | Backend | `bitso` | Which exchange to connect to |
 | `VITE_API_BASE_URL` | Frontend | (uses proxy) | Full URL of backend `/api` |
 | `VITE_WS_URL` | Frontend | `ws://localhost:8000/ws` | Full URL of backend WebSocket |
-| `VITE_API_SECRET_KEY` | Frontend | (empty) | Must match backend `API_SECRET_KEY` |
+| `VITE_API_SECRET_KEY` | Frontend | (empty) | Only needed if you still use `API_SECRET_KEY` |

@@ -17,8 +17,10 @@ class Settings(BaseSettings):
     MAX_TRADES_PER_DAY: int = 10
     DATABASE_URL: str = "sqlite+aiosqlite:///./daytrader.db"
     PAPER_MODE: bool = True
-    # Comma-separated list of allowed CORS origins
+    # Comma-separated list of allowed frontend origins
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    # Optional allowlist for login emails. Override in .env for production.
+    ALLOWED_EMAILS: str = "alonzo.larraguibel@gmail.com"
     # Optional API secret — if set, all /api requests require Authorization: Bearer <key>
     API_SECRET_KEY: str = ""
     # Exit criteria: stop opening new positions if either threshold is hit today
@@ -30,6 +32,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def allowed_emails_list(self) -> list[str]:
+        return [email.strip().lower() for email in self.ALLOWED_EMAILS.split(",") if email.strip()]
 
     @property
     def is_postgres(self) -> bool:

@@ -12,8 +12,6 @@ from routers import auth as auth_router
 from agents.orchestrator import orchestrator
 from routers.ws import manager
 
-ALLOWED_EMAIL = "alonzo.larraguibel@gmail.com"
-
 import os
 _JWT_SECRET = os.environ.get("JWT_SECRET", "daytrader-local-jwt-secret-change-in-prod")
 _JWT_ALGORITHM = "HS256"
@@ -56,7 +54,9 @@ async def auth_middleware(request: Request, call_next):
     token = auth_header.split(" ", 1)[1]
     try:
         payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
-        if payload.get("sub") != ALLOWED_EMAIL:
+        email = str(payload.get("sub", "")).strip().lower()
+        allowed_emails = settings.allowed_emails_list
+        if not email or (allowed_emails and email not in allowed_emails):
             return JSONResponse(status_code=401, content={"detail": "Invalid user"})
     except JWTError:
         return JSONResponse(status_code=401, content={"detail": "Invalid or expired token"})

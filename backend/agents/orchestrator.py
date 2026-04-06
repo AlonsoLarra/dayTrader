@@ -139,7 +139,7 @@ class AgentOrchestrator:
                 if not strategy_cls:
                     continue
                 strategy = strategy_cls({})
-                exchange = create_exchange(budget=state.budget_allocated)
+                exchange = create_exchange(budget=state.budget_allocated, symbol=state.symbol)
                 guardrails = RiskGuardrails(
                     state.budget_allocated,
                     settings.STOP_LOSS_PCT,
@@ -151,12 +151,21 @@ class AgentOrchestrator:
                 agent._broadcaster = self._broadcaster
                 # Restore open position from DB
                 if state.open_position_price and state.open_position_amount:
+                    total_cost = float(state.budget_used or (state.open_position_amount * state.open_position_price))
                     agent.open_position = {
                         "side": state.open_position_side or "buy",
                         "price": state.open_position_price,
                         "amount": state.open_position_amount,
                         "symbol": state.symbol,
+                        "total_cost": total_cost,
                     }
+                    if hasattr(exchange, "restore_position"):
+                        exchange.restore_position(
+                            state.symbol,
+                            state.open_position_amount,
+                            state.open_position_price,
+                            total_cost=total_cost,
+                        )
                 self._agents[state.agent_id] = agent
 
                 # If it was mid-run when server died, mark it stopped
@@ -180,7 +189,7 @@ class AgentOrchestrator:
 
         agent_id = str(uuid.uuid4())[:8]
         strategy = strategy_cls(params)
-        exchange = create_exchange(budget=budget)
+        exchange = create_exchange(budget=budget, symbol=symbol)
         guardrails = RiskGuardrails(
             budget,
             settings.STOP_LOSS_PCT,

@@ -190,3 +190,25 @@ class PaperExchange:
             return self._bitso.fetch_ohlcv(symbol, timeframe, limit=limit)
         except Exception:
             return []
+
+    def restore_position(self, symbol: str, amount: float, entry_price: float, total_cost: float = None) -> None:
+        """Rehydrate a persisted paper position so it can be sold after restart."""
+        base_currency, quote_currency = symbol.split("/")
+        self._base = base_currency
+        self._quote = quote_currency
+
+        total_cost = float(total_cost if total_cost is not None else amount * entry_price)
+        current_quote = float(self.balance.get(quote_currency, 0.0))
+        current_base = float(self.balance.get(base_currency, 0.0))
+
+        # Freshly recreated exchanges still have the full quote balance and no base asset.
+        # In that case, reconstruct the post-buy remaining quote balance once.
+        if current_base + 1e-12 < float(amount):
+            current_quote = max(0.0, current_quote - total_cost)
+
+        self.balance[quote_currency] = current_quote
+        self.balance[base_currency] = float(amount)
+        self.positions[symbol] = {
+            "amount": float(amount),
+            "avg_entry_price": float(entry_price),
+        }

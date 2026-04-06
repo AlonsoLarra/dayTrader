@@ -104,6 +104,30 @@ def test_round_trip_loses_to_fees():
     assert final > 180.0     # but not catastrophically
 
 
+def test_restored_position_can_sell_after_restart():
+    """A paper-traded position restored from DB after a restart must still be sellable."""
+    ex = _make_exchange(200.0)
+    with patch.object(ex, "fetch_ticker", return_value=_ticker(PRICE)):
+        buy = ex.create_order(SYMBOL, "market", "buy", 2.0, PRICE)
+
+    spent = 200.0 - ex.fetch_balance()["free"]["MXN"]
+
+    restored = PaperExchange(symbol=SYMBOL, initial_balance=200.0)
+    restored.restore_position(
+        SYMBOL,
+        amount=2.0,
+        entry_price=buy["price"],
+        total_cost=spent,
+    )
+
+    with patch.object(restored, "fetch_ticker", return_value=_ticker(PRICE)):
+        restored.create_order(SYMBOL, "market", "sell", 2.0, PRICE)
+
+    bal = restored.fetch_balance()["free"]
+    assert bal["XRP"] == 0.0
+    assert bal["MXN"] > 0.0
+
+
 # ── Error cases ───────────────────────────────────────────────────────────────
 
 def test_buy_insufficient_balance_raises():

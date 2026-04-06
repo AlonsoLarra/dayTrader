@@ -9,6 +9,7 @@ from models import Trade, AgentLog, AgentState
 from strategies.base import BaseStrategy, Signal
 from risk.guardrails import RiskGuardrails
 from exchange.client import get_ohlcv, get_ticker, place_order, create_exchange
+from exchange.paper_trading import PaperExchange
 from config import settings
 
 
@@ -237,6 +238,14 @@ class TradingAgent:
                     amount = self.open_position["amount"]
 
                 try:
+                    if result.signal == Signal.SELL and self.open_position and isinstance(self.exchange, PaperExchange):
+                        self.exchange.restore_position(
+                            self.symbol,
+                            self.open_position["amount"],
+                            self.open_position["price"],
+                            total_cost=self.open_position.get("total_cost", state.budget_used),
+                        )
+
                     order = await place_order(
                         self.exchange,
                         self.symbol,
@@ -283,7 +292,7 @@ class TradingAgent:
                                 old_symbol = self.symbol
                                 self.symbol = new_symbol
                                 self.strategy = new_strategy_cls(new_params)
-                                self.exchange = create_exchange(budget=state.budget_allocated)
+                                self.exchange = create_exchange(budget=state.budget_allocated, symbol=new_symbol)
                                 await self._update_state(session, symbol=new_symbol, strategy=new_strat_name)
                                 await self._log(
                                     session, "info",
@@ -381,6 +390,13 @@ class TradingAgent:
             if not current_price:
                 raise ValueError("Could not fetch current price")
             amount = self.open_position["amount"]
+            if isinstance(self.exchange, PaperExchange):
+                self.exchange.restore_position(
+                    self.symbol,
+                    amount,
+                    self.open_position["price"],
+                    total_cost=self.open_position.get("total_cost", state.budget_used if state else None),
+                )
             order = await place_order(self.exchange, self.symbol, "sell", amount)
             fill_price = order.get("price", current_price)
             fee = order.get("fee", {}).get("cost", 0.0)
