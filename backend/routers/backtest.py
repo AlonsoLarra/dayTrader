@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from strategies.ma_crossover import MACrossoverStrategy
 from strategies.rsi import RSIStrategy
 from strategies.trend_rsi import TrendRSIStrategy
+from strategies.adaptive import AdaptiveStrategy
 from backtester.runner import BacktestRunner
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
@@ -12,6 +13,7 @@ STRATEGY_MAP = {
     "ma_crossover": MACrossoverStrategy,
     "rsi": RSIStrategy,
     "trend_rsi": TrendRSIStrategy,
+    "adaptive": AdaptiveStrategy,
 }
 
 

@@ -73,3 +73,29 @@ class RiskGuardrails:
                 return 0.0  # Can't afford even the minimum — budget too small for this pair
 
         return round(amount, 8)
+
+    def calculate_adaptive_position_size(
+        self, available_budget: float, price: float, symbol: str, confidence: float
+    ) -> float:
+        """
+        Scale position size by signal confidence: 15% to 35% of available budget.
+        Stronger signals get larger positions, weaker signals stay conservative.
+        """
+        if price <= 0 or available_budget <= 0:
+            return 0.0
+
+        min_amount = MIN_ORDER_AMOUNT.get(symbol, DEFAULT_MIN_AMOUNT)
+
+        effective_pct = 0.15 + max(0.0, min(confidence, 1.0)) * 0.20
+        trade_budget = available_budget * effective_pct
+        amount = trade_budget / price
+        amount = round(amount, 8)
+
+        if amount < min_amount:
+            min_cost = min_amount * price
+            if min_cost <= available_budget:
+                amount = min_amount
+            else:
+                return 0.0
+
+        return round(amount, 8)

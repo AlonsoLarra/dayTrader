@@ -229,7 +229,12 @@ class TradingAgent:
                 available_budget = state.budget_allocated - state.budget_used
 
                 if result.signal == Signal.BUY:
-                    amount = self.guardrails.calculate_position_size(available_budget, current_price, self.symbol)
+                    if getattr(self.strategy, 'supports_adaptive_sizing', False):
+                        amount = self.guardrails.calculate_adaptive_position_size(
+                            available_budget, current_price, self.symbol, result.confidence
+                        )
+                    else:
+                        amount = self.guardrails.calculate_position_size(available_budget, current_price, self.symbol)
                     if amount <= 0:
                         await self._log(session, "info", f"Insufficient budget for minimum order size on {self.symbol}")
                         return

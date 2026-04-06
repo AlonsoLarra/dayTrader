@@ -119,6 +119,24 @@ async def get_reasoning():
                 fast = int(params.get("fast_period", 9))
                 slow = int(params.get("slow_period", 21))
                 reasoning = _ma_reasoning(closes, fast, slow, has_position, current_price)
+            elif strategy_name in ("trend_rsi", "adaptive"):
+                # Use the strategy's own analyze() for rich reasoning
+                import inspect
+                sig = inspect.signature(agent.strategy.analyze)
+                if "entry_price" in sig.parameters:
+                    result = agent.strategy.analyze(
+                        ohlcv,
+                        entry_price=entry_price,
+                        candles_held=agent.open_position.get("candles_held", 0) if agent.open_position else 0,
+                    )
+                else:
+                    result = agent.strategy.analyze(ohlcv)
+                reasoning = {
+                    "action": result.signal.value.upper(),
+                    "trigger": result.reasoning,
+                    "urgency": "high" if result.confidence > 0.7 else "medium" if result.confidence > 0.3 else "low",
+                    **result.indicators,
+                }
             else:
                 reasoning = {"action": "UNKNOWN", "trigger": "Unknown strategy", "urgency": "low"}
 
