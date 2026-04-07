@@ -147,6 +147,7 @@ def test_sell_without_holding_raises():
 # ── Guardrails ────────────────────────────────────────────────────────────────
 
 from risk.guardrails import RiskGuardrails  # noqa: E402
+from agents.orchestrator import evaluate_rotation_decision  # noqa: E402
 
 
 @pytest.fixture()
@@ -178,3 +179,65 @@ def test_stop_loss_triggers_on_drop(guardrails):
 
 def test_stop_loss_no_trigger_small_drop(guardrails):
     assert guardrails.check_stop_loss(entry_price=100.0, current_price=98.0, side="buy") is False
+
+
+def test_rotation_decision_rotates_for_stronger_market():
+    action, reason = evaluate_rotation_decision(
+        current_symbol="XRP/MXN",
+        current_score=48.0,
+        best_symbol="SOL/MXN",
+        best_score=66.0,
+        has_position=True,
+        unrealized_pnl_pct=0.8,
+        aggressive=True,
+        min_score_delta=8.0,
+        cooldown_active=False,
+    )
+    assert action == "rotate"
+    assert "SOL/MXN" in reason
+
+
+def test_rotation_decision_holds_when_score_gap_is_small():
+    action, reason = evaluate_rotation_decision(
+        current_symbol="XRP/MXN",
+        current_score=58.0,
+        best_symbol="SOL/MXN",
+        best_score=62.0,
+        has_position=True,
+        unrealized_pnl_pct=1.2,
+        aggressive=True,
+        min_score_delta=8.0,
+        cooldown_active=False,
+    )
+    assert action == "hold"
+    assert "score gap" in reason.lower()
+
+
+def test_rotation_default_threshold_is_responsive_to_live_market_gaps():
+    action, reason = evaluate_rotation_decision(
+        current_symbol="XRP/MXN",
+        current_score=12.0,
+        best_symbol="AVAX/MXN",
+        best_score=13.3,
+        has_position=True,
+        aggressive=True,
+        cooldown_active=False,
+    )
+    assert action == "rotate"
+    assert "AVAX/MXN" in reason
+
+
+def test_rotation_decision_protects_deeply_underwater_trade():
+    action, reason = evaluate_rotation_decision(
+        current_symbol="XRP/MXN",
+        current_score=46.0,
+        best_symbol="BTC/MXN",
+        best_score=56.0,
+        has_position=True,
+        unrealized_pnl_pct=-4.2,
+        aggressive=True,
+        min_score_delta=8.0,
+        cooldown_active=False,
+    )
+    assert action == "hold"
+    assert "drawdown" in reason.lower()

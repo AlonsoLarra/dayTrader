@@ -91,8 +91,15 @@ export const runBacktest = (data: {
 export const analyzeMarket = (max_pairs = 10) =>
   api.post<{ pairs: PairAnalysis[] }>('/portfolio/analyze', null, { params: { max_pairs } }).then(r => r.data);
 
-export const deployPortfolio = (data: { budget: number; max_agents: number; min_score: number }) =>
-  api.post<DeployResult>('/portfolio/deploy', data).then(r => r.data);
+export const deployPortfolio = (data: {
+  budget: number;
+  max_agents: number;
+  min_score: number;
+  rotation_enabled?: boolean;
+  rotation_interval_minutes?: number;
+  aggressive_rotation?: boolean;
+  min_rotation_score_delta?: number;
+}) => api.post<DeployResult>('/portfolio/deploy', data).then(r => r.data);
 
 export const getPositions = () =>
   api.get<{ positions: Position[] }>('/agents/positions').then(r => r.data);
@@ -145,6 +152,12 @@ export interface PairScan {
   score: number;
   rsi: number;
   price: number;
+  strategy: string;
+  action: string;
+  reason: string;
+  confidence?: number;
+  tracked_by?: string[];
+  tracked_count?: number;
 }
 
 export const getStrategyReasoning = () =>

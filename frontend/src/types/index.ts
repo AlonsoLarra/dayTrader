@@ -9,8 +9,14 @@ export interface Agent {
   losses_today: number;
   realized_pnl_today: number;
   realized_pnl_total?: number;
+  rotation_enabled?: boolean;
+  aggressive_rotation?: boolean;
+  rotation_interval_minutes?: number;
+  min_rotation_score_delta?: number;
   last_signal?: 'buy' | 'sell' | 'hold' | null;
   last_tick_at?: string | null;
+  last_market_review_at?: string | null;
+  last_rotation_at?: string | null;
   created_at?: string;
 }
 

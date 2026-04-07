@@ -6,7 +6,7 @@ import asyncio
 import numpy as np
 from fastapi import APIRouter
 
-from agents.orchestrator import orchestrator
+from agents.orchestrator import STRATEGY_MAP, _score_pair, orchestrator
 from exchange.client import create_exchange, get_ohlcv, get_ticker
 
 router = APIRouter(prefix="/api/strategy", tags=["strategy"])
@@ -89,6 +89,37 @@ def _ma_reasoning(closes: list, fast: int, slow: int, has_position: bool, curren
             "spread_pct": round(spread_pct, 3), "bullish": bullish}
 
 
+def _normalize_action(signal_value: str, has_position: bool) -> str:
+    normalized = (signal_value or "").lower()
+    if normalized == "buy":
+        return "BUY SIGNAL"
+    if normalized == "sell":
+        return "SELL SIGNAL"
+    return "HOLDING" if has_position else "WAITING"
+
+
+def _pick_strategy_for_pair(ohlcv: list) -> tuple:
+    """Mirror the auto-trade selector so the Strategy tab explains the same choices bots use."""
+    if len(ohlcv) >= 20:
+        closes = [c[4] for c in ohlcv]
+        rets = [abs(closes[i] - closes[i - 1]) / closes[i - 1] for i in range(1, len(closes)) if closes[i - 1]]
+        vol = float(np.std(rets)) * 100 if rets else 0.0
+        if vol > 5.0:
+            return "rsi", {"period": 14, "oversold": 35, "overbought": 65}
+        return "adaptive", {}
+    return "trend_rsi", {}
+
+
+def _reasoning_from_strategy_result(result, has_position: bool) -> dict:
+    return {
+        "action": _normalize_action(result.signal.value, has_position),
+        "trigger": result.reasoning,
+        "urgency": "high" if result.confidence > 0.7 else "medium" if result.confidence > 0.3 else "low",
+        "confidence": round(float(result.confidence or 0.0), 2),
+        **result.indicators,
+    }
+
+
 @router.get("/reasoning")
 async def get_reasoning():
     """
@@ -108,6 +139,7 @@ async def get_reasoning():
             has_position = agent.open_position is not None
             strategy_name = agent.strategy.name
             params = agent.strategy.params
+            entry_price = agent.open_position["price"] if has_position else None
 
             if strategy_name == "rsi":
                 oversold = float(params.get("oversold", 30))
@@ -131,16 +163,9 @@ async def get_reasoning():
                     )
                 else:
                     result = agent.strategy.analyze(ohlcv)
-                reasoning = {
-                    "action": result.signal.value.upper(),
-                    "trigger": result.reasoning,
-                    "urgency": "high" if result.confidence > 0.7 else "medium" if result.confidence > 0.3 else "low",
-                    **result.indicators,
-                }
+                reasoning = _reasoning_from_strategy_result(result, has_position)
             else:
                 reasoning = {"action": "UNKNOWN", "trigger": "Unknown strategy", "urgency": "low"}
-
-            entry_price = agent.open_position["price"] if has_position else None
             unrealized_pnl = None
             stop_loss_price = None
             if has_position and entry_price and current_price:
@@ -172,21 +197,76 @@ async def get_reasoning():
 
 @router.get("/market-scan")
 async def get_market_scan():
-    """Score all pairs right now — shows why auto-trade would pick each one."""
-    from agents.orchestrator import scan_best_opportunity, _score_pair
+    """Score all pairs right now and explain the current buy/sell/hold bias for each one."""
     exchange = create_exchange()
 
     async def _scan_one(symbol: str):
         try:
-            ohlcv = await get_ohlcv(exchange, symbol, "15m", 50)
-            score = _score_pair(ohlcv)
+            ohlcv = await get_ohlcv(exchange, symbol, "15m", 100)
             closes = [c[4] for c in ohlcv]
-            rsi = _compute_rsi(closes) if len(closes) >= 16 else 50.0
             ticker = await get_ticker(exchange, symbol)
             price = ticker.get("last", 0)
-            return {"symbol": symbol, "score": score, "rsi": rsi, "price": price}
-        except Exception:
-            return {"symbol": symbol, "score": 0, "rsi": 50, "price": 0}
+            score = _score_pair(ohlcv)
+            rsi = _compute_rsi(closes) if len(closes) >= 16 else 50.0
+            strategy_name, params = _pick_strategy_for_pair(ohlcv)
+            strategy_cls = STRATEGY_MAP.get(strategy_name)
+            tracked_by = [agent_id for agent_id, agent in orchestrator._agents.items() if agent.symbol == symbol]
+
+            if not strategy_cls:
+                return {
+                    "symbol": symbol,
+                    "score": score,
+                    "rsi": rsi,
+                    "price": price,
+                    "strategy": strategy_name,
+                    "action": "WAITING",
+                    "reason": "No strategy available for this pair right now",
+                    "confidence": 0.0,
+                    "tracked_by": tracked_by,
+                    "tracked_count": len(tracked_by),
+                }
+
+            strategy = strategy_cls(params)
+            if len(ohlcv) < getattr(strategy, "min_candles", 0):
+                reason = f"Insufficient data ({len(ohlcv)} candles, need {strategy.min_candles})"
+                action = "WAITING"
+                confidence = 0.0
+            else:
+                import inspect
+                sig = inspect.signature(strategy.analyze)
+                if "entry_price" in sig.parameters:
+                    result = strategy.analyze(ohlcv, entry_price=None, candles_held=0)
+                else:
+                    result = strategy.analyze(ohlcv)
+                action = _normalize_action(result.signal.value, False)
+                reason = result.reasoning
+                confidence = round(float(result.confidence or 0.0), 2)
+
+            return {
+                "symbol": symbol,
+                "score": round(float(score or 0.0), 2),
+                "rsi": rsi,
+                "price": price,
+                "strategy": strategy_name,
+                "action": action,
+                "reason": reason,
+                "confidence": confidence,
+                "tracked_by": tracked_by,
+                "tracked_count": len(tracked_by),
+            }
+        except Exception as e:
+            return {
+                "symbol": symbol,
+                "score": 0,
+                "rsi": 50,
+                "price": 0,
+                "strategy": "adaptive",
+                "action": "WAITING",
+                "reason": f"Scan failed: {e}",
+                "confidence": 0.0,
+                "tracked_by": [],
+                "tracked_count": 0,
+            }
 
     results = await asyncio.gather(*[_scan_one(s) for s in SYMBOLS])
     results = sorted(results, key=lambda x: x["score"], reverse=True)

@@ -44,6 +44,12 @@ def _migrate_schema(conn):
         "ALTER TABLE agent_states ADD COLUMN open_position_side TEXT",
         "ALTER TABLE agent_states ADD COLUMN open_position_price REAL",
         "ALTER TABLE agent_states ADD COLUMN open_position_amount REAL",
+        "ALTER TABLE agent_states ADD COLUMN rotation_enabled BOOLEAN DEFAULT 0",
+        "ALTER TABLE agent_states ADD COLUMN aggressive_rotation BOOLEAN DEFAULT 0",
+        "ALTER TABLE agent_states ADD COLUMN rotation_interval_minutes INTEGER DEFAULT 1",
+        "ALTER TABLE agent_states ADD COLUMN min_rotation_score_delta REAL DEFAULT 1.0",
+        "ALTER TABLE agent_states ADD COLUMN last_market_review_at TIMESTAMP",
+        "ALTER TABLE agent_states ADD COLUMN last_rotation_at TIMESTAMP",
         # Auth table (create via raw SQL so it's not tied to SQLAlchemy models)
         """CREATE TABLE IF NOT EXISTS auth_users (
             email TEXT PRIMARY KEY,
@@ -59,6 +65,13 @@ def _migrate_schema(conn):
     # Backfill symbol for rows that predate this column
     try:
         conn.execute(text("UPDATE agent_states SET symbol = 'BTC/MXN' WHERE symbol IS NULL"))
+    except Exception:
+        pass
+    try:
+        conn.execute(text(
+            "UPDATE agent_states SET min_rotation_score_delta = 1.0 "
+            "WHERE rotation_enabled = 1 AND (min_rotation_score_delta IS NULL OR min_rotation_score_delta = 8.0)"
+        ))
     except Exception:
         pass
 

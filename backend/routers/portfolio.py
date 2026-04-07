@@ -17,6 +17,10 @@ class DeployRequest(BaseModel):
     budget: float
     max_agents: int = 3
     min_score: float = 30.0
+    rotation_enabled: bool = True
+    aggressive_rotation: bool = True
+    rotation_interval_minutes: int = 1
+    min_rotation_score_delta: float = 1.0
 
 
 class PairScore(BaseModel):
@@ -146,6 +150,8 @@ async def deploy_portfolio(req: DeployRequest, db: AsyncSession = Depends(get_db
         raise HTTPException(status_code=400, detail="Minimum budget is $10 MXN")
     if req.max_agents < 1 or req.max_agents > 6:
         raise HTTPException(status_code=400, detail="max_agents must be 1–6")
+    if req.rotation_interval_minutes < 1 or req.rotation_interval_minutes > 5:
+        raise HTTPException(status_code=400, detail="rotation_interval_minutes must be 1–5")
 
     available = await get_available_budget(db)
     if req.budget > available:
@@ -192,6 +198,10 @@ async def deploy_portfolio(req: DeployRequest, db: AsyncSession = Depends(get_db
                 params=params,
                 budget=allocated,
                 symbol=pair["symbol"],
+                rotation_enabled=req.rotation_enabled,
+                aggressive_rotation=req.aggressive_rotation,
+                rotation_interval_minutes=req.rotation_interval_minutes,
+                min_rotation_score_delta=req.min_rotation_score_delta,
             )
             await orchestrator.start_agent(agent_id)
             agent_ids.append(agent_id)

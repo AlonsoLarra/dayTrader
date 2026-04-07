@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 
 from models import Trade, AgentLog, AgentState
-from strategies.base import BaseStrategy, Signal
+from strategies.base import BaseStrategy, Signal, StrategyResult
 from risk.guardrails import RiskGuardrails
 from exchange.client import get_ohlcv, get_ticker, place_order, create_exchange
 from exchange.paper_trading import PaperExchange
@@ -22,6 +22,10 @@ class TradingAgent:
         guardrails: RiskGuardrails,
         session_factory,
         symbol: str = "BTC/MXN",
+        rotation_enabled: bool = False,
+        aggressive_rotation: bool = False,
+        rotation_interval_minutes: int = 1,
+        min_rotation_score_delta: float = 1.0,
     ):
         self.agent_id = agent_id
         self.strategy = strategy
@@ -29,6 +33,12 @@ class TradingAgent:
         self.guardrails = guardrails
         self.session_factory = session_factory
         self.symbol = symbol
+        self.rotation_enabled = rotation_enabled
+        self.aggressive_rotation = aggressive_rotation
+        self.rotation_interval_minutes = max(1, int(rotation_interval_minutes or 1))
+        self.min_rotation_score_delta = float(min_rotation_score_delta or 1.0)
+        self._last_market_review_at: Optional[datetime] = None
+        self._last_rotation_at: Optional[datetime] = None
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self.open_position: Optional[dict] = None  # {side, price, amount}
@@ -101,6 +111,133 @@ class TradingAgent:
                     },
                 }
             )
+
+    def _sync_rotation_policy_from_state(self, state: Optional[AgentState]) -> None:
+        if not state:
+            return
+        self.rotation_enabled = bool(getattr(state, "rotation_enabled", self.rotation_enabled))
+        self.aggressive_rotation = bool(getattr(state, "aggressive_rotation", self.aggressive_rotation))
+        self.rotation_interval_minutes = max(
+            1,
+            int(getattr(state, "rotation_interval_minutes", self.rotation_interval_minutes) or 1),
+        )
+        state_delta = float(
+            getattr(state, "min_rotation_score_delta", self.min_rotation_score_delta) or self.min_rotation_score_delta
+        )
+        if self.rotation_enabled and self.aggressive_rotation and state_delta >= 8.0:
+            state_delta = 1.0
+        self.min_rotation_score_delta = state_delta
+        self._last_market_review_at = getattr(state, "last_market_review_at", self._last_market_review_at)
+        self._last_rotation_at = getattr(state, "last_rotation_at", self._last_rotation_at)
+
+    async def _maybe_review_market(self, session: AsyncSession, state: AgentState) -> Optional[StrategyResult]:
+        self._sync_rotation_policy_from_state(state)
+        if not self.rotation_enabled:
+            return None
+
+        now = datetime.utcnow()
+        if self.rotation_enabled and self.aggressive_rotation and float(getattr(state, "min_rotation_score_delta", 1.0) or 1.0) >= 8.0:
+            self.min_rotation_score_delta = 1.0
+            await self._update_state(session, min_rotation_score_delta=1.0)
+            state = await self._get_state(session) or state
+
+        last_review = self._last_market_review_at or getattr(state, "last_market_review_at", None)
+        interval_seconds = max(60, self.rotation_interval_minutes * 60)
+        if last_review and (now - last_review).total_seconds() < interval_seconds:
+            return None
+
+        await self._update_state(session, last_market_review_at=now)
+        self._last_market_review_at = now
+
+        from agents.orchestrator import (
+            STRATEGY_MAP,
+            _score_pair,
+            evaluate_rotation_decision,
+            scan_best_opportunity,
+        )
+
+        current_ohlcv = await get_ohlcv(self.exchange, self.symbol, "15m", 50)
+        current_score = _score_pair(current_ohlcv)
+        best_symbol, new_strat_name, new_params, best_score = await scan_best_opportunity(exclude_symbol=None)
+
+        unrealized_pnl_pct = None
+        if self.open_position and self.open_position.get("price"):
+            ticker = await get_ticker(self.exchange, self.symbol)
+            current_price = ticker.get("last", 0)
+            if current_price:
+                unrealized_pnl_pct = (
+                    (current_price - self.open_position["price"]) / self.open_position["price"]
+                ) * 100
+
+        cooldown_seconds = max(180, self.rotation_interval_minutes * 180)
+        last_rotation = self._last_rotation_at or getattr(state, "last_rotation_at", None)
+        cooldown_active = False
+        if last_rotation:
+            cooldown_active = (now - last_rotation).total_seconds() < cooldown_seconds
+
+        action, reason = evaluate_rotation_decision(
+            current_symbol=self.symbol,
+            current_score=current_score,
+            best_symbol=best_symbol,
+            best_score=best_score,
+            has_position=self.open_position is not None,
+            unrealized_pnl_pct=unrealized_pnl_pct,
+            aggressive=self.aggressive_rotation,
+            min_score_delta=self.min_rotation_score_delta,
+            cooldown_active=cooldown_active,
+        )
+
+        if action != "rotate":
+            await self._log(
+                session,
+                "info",
+                f"Market review: holding {self.symbol} (score={current_score:.1f}, best={best_symbol} {best_score:.1f})",
+                decision="market_review",
+                reasoning=reason,
+            )
+            return None
+
+        new_strategy_cls = STRATEGY_MAP.get(new_strat_name)
+        if not new_strategy_cls:
+            return None
+
+        if self.open_position:
+            await self._log(
+                session,
+                "info",
+                f"Market review found a stronger setup in {best_symbol}; exiting {self.symbol} first",
+                decision="rotate_review",
+                reasoning=reason,
+            )
+            return StrategyResult(
+                signal=Signal.SELL,
+                confidence=0.95,
+                reasoning=reason,
+                indicators={
+                    "current_score": round(current_score, 2),
+                    "best_score": round(best_score, 2),
+                    "best_symbol": best_symbol,
+                },
+            )
+
+        old_symbol = self.symbol
+        self.symbol = best_symbol
+        self.strategy = new_strategy_cls(new_params)
+        self._last_rotation_at = now
+        await self._update_state(
+            session,
+            symbol=best_symbol,
+            strategy=new_strat_name,
+            last_rotation_at=now,
+        )
+        await self._log(
+            session,
+            "info",
+            f"Market review retargeted {old_symbol} → {best_symbol} ({new_strat_name}, score={best_score:.1f})",
+            decision="rotate",
+            reasoning=reason,
+        )
+        return None
 
     async def tick(self):
         async with self.session_factory() as session:
@@ -190,23 +327,28 @@ class TradingAgent:
                     await self._log(session, "info", f"Cannot trade: {reason}")
                     return
 
-                ohlcv = await get_ohlcv(self.exchange, self.symbol, "15m", 100)
-                if not ohlcv:
-                    await self._log(session, "warning", "Failed to fetch OHLCV data")
-                    return
+                rotation_override = await self._maybe_review_market(session, state)
 
-                # Pass entry context to strategies that support it (TrendRSI)
-                entry_price = self.open_position["price"] if self.open_position else None
-                candles_held = self.open_position.get("candles_held", 0) if self.open_position else 0
-                if self.open_position:
-                    self.open_position["candles_held"] = candles_held + 1
-
-                import inspect
-                sig = inspect.signature(self.strategy.analyze)
-                if "entry_price" in sig.parameters:
-                    result = self.strategy.analyze(ohlcv, entry_price=entry_price, candles_held=candles_held)
+                if rotation_override:
+                    result = rotation_override
                 else:
-                    result = self.strategy.analyze(ohlcv)
+                    ohlcv = await get_ohlcv(self.exchange, self.symbol, "15m", 100)
+                    if not ohlcv:
+                        await self._log(session, "warning", "Failed to fetch OHLCV data")
+                        return
+
+                    # Pass entry context to strategies that support it (TrendRSI)
+                    entry_price = self.open_position["price"] if self.open_position else None
+                    candles_held = self.open_position.get("candles_held", 0) if self.open_position else 0
+                    if self.open_position:
+                        self.open_position["candles_held"] = candles_held + 1
+
+                    import inspect
+                    sig = inspect.signature(self.strategy.analyze)
+                    if "entry_price" in sig.parameters:
+                        result = self.strategy.analyze(ohlcv, entry_price=entry_price, candles_held=candles_held)
+                    else:
+                        result = self.strategy.analyze(ohlcv)
 
                 await self._update_state(
                     session,
@@ -304,26 +446,31 @@ class TradingAgent:
                         )
                         self.open_position = None
 
-                        # Pair rotation: after selling, scan market for best next opportunity
-                        # Import here to avoid circular import at module level
-                        from agents.orchestrator import scan_best_opportunity, STRATEGY_MAP
-                        new_symbol, new_strat_name, new_params, score = await scan_best_opportunity(
-                            exclude_symbol=None  # include all pairs — even same one if it's best
-                        )
-                        if new_symbol != self.symbol or new_strat_name != self.strategy.name:
-                            new_strategy_cls = STRATEGY_MAP.get(new_strat_name)
-                            if new_strategy_cls:
-                                old_symbol = self.symbol
-                                self.symbol = new_symbol
-                                self.strategy = new_strategy_cls(new_params)
-                                self.exchange = create_exchange(budget=state.budget_allocated, symbol=new_symbol)
-                                await self._update_state(session, symbol=new_symbol, strategy=new_strat_name)
-                                await self._log(
-                                    session, "info",
-                                    f"Rotated: {old_symbol} → {new_symbol} ({new_strat_name}, score={score:.1f})",
-                                    decision="rotate",
-                                    reasoning=f"Market scan found better opportunity in {new_symbol}",
-                                )
+                        if self.rotation_enabled:
+                            # Pair rotation: after selling, scan market for the strongest next opportunity.
+                            from agents.orchestrator import scan_best_opportunity, STRATEGY_MAP
+                            new_symbol, new_strat_name, new_params, score = await scan_best_opportunity(
+                                exclude_symbol=None  # include all pairs — even same one if it's best
+                            )
+                            if new_symbol != self.symbol or new_strat_name != self.strategy.name:
+                                new_strategy_cls = STRATEGY_MAP.get(new_strat_name)
+                                if new_strategy_cls:
+                                    old_symbol = self.symbol
+                                    self.symbol = new_symbol
+                                    self.strategy = new_strategy_cls(new_params)
+                                    self._last_rotation_at = datetime.utcnow()
+                                    await self._update_state(
+                                        session,
+                                        symbol=new_symbol,
+                                        strategy=new_strat_name,
+                                        last_rotation_at=self._last_rotation_at,
+                                    )
+                                    await self._log(
+                                        session, "info",
+                                        f"Rotated: {old_symbol} → {new_symbol} ({new_strat_name}, score={score:.1f})",
+                                        decision="rotate",
+                                        reasoning=f"Market scan found better opportunity in {new_symbol}",
+                                    )
                     else:
                         # Opening long position — update DB first, then set in-memory
                         # If DB update fails the exception propagates and in-memory is NOT set

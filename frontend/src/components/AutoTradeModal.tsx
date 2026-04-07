@@ -40,7 +40,15 @@ export function AutoTradeModal({ available, onClose, onDeployed }: Props) {
     try {
       const analysis = await analyzeMarket(10);
       setPairs(analysis.pairs);
-      const r = await deployPortfolio({ budget, max_agents: 3, min_score: 20 });
+      const r = await deployPortfolio({
+        budget,
+        max_agents: 3,
+        min_score: 20,
+        rotation_enabled: true,
+        rotation_interval_minutes: 1,
+        aggressive_rotation: true,
+        min_rotation_score_delta: 1,
+      });
       setResult(r);
       setStatus('done');
     } catch (e: unknown) {
@@ -75,7 +83,7 @@ export function AutoTradeModal({ available, onClose, onDeployed }: Props) {
             <p className="text-sm text-gray-400">
               ${result.total_budget.toLocaleString('es-MX')} MXN spread across{' '}
               {result.agent_ids.length} pair{result.agent_ids.length !== 1 ? 's' : ''}.
-              They will begin trading within 30 seconds.
+              They will begin trading within 30 seconds and re-check the full market every minute.
             </p>
             <div className="flex flex-wrap justify-center gap-2 mt-1">
               {result.pairs.map(p => (
@@ -118,7 +126,7 @@ export function AutoTradeModal({ available, onClose, onDeployed }: Props) {
         {status === 'idle' && (
           <div className="space-y-5">
             <p className="text-sm text-gray-400">
-              Set a budget and the system will automatically find and open the best crypto positions right now.
+              Set a budget and the system will automatically find the best crypto positions now, then keep re-evaluating the market every minute.
             </p>
 
             {/* Budget mode toggle */}
@@ -179,7 +187,7 @@ export function AutoTradeModal({ available, onClose, onDeployed }: Props) {
               </div>
               <div className="flex items-start gap-2">
                 <Zap className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                <span>Automatically opens positions across 1-3 top-ranked pairs and monitors them for you</span>
+                <span>Automatically opens positions across 1-3 top-ranked pairs, then rechecks every minute and can rotate into stronger setups</span>
               </div>
             </div>
 

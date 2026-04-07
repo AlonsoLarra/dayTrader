@@ -29,6 +29,10 @@ class CreateAgentRequest(BaseModel):
     params: dict = {}
     budget: float = 1000.0
     symbol: Optional[str] = None
+    rotation_enabled: bool = False
+    aggressive_rotation: bool = False
+    rotation_interval_minutes: int = 1
+    min_rotation_score_delta: float = 1.0
 
 
 @router.get("")
@@ -58,8 +62,14 @@ async def list_agents(db: AsyncSession = Depends(get_db)):
             "losses_today": getattr(s, 'losses_today', 0) or 0,
             "realized_pnl_today": getattr(s, 'realized_pnl_today', 0.0) or 0.0,
             "realized_pnl_total": pnl_by_agent.get(s.agent_id, 0.0),
+            "rotation_enabled": bool(getattr(s, 'rotation_enabled', False)),
+            "aggressive_rotation": bool(getattr(s, 'aggressive_rotation', False)),
+            "rotation_interval_minutes": int(getattr(s, 'rotation_interval_minutes', 1) or 1),
+            "min_rotation_score_delta": float(getattr(s, 'min_rotation_score_delta', 1.0) or 1.0),
             "last_signal": s.last_signal,
             "last_tick_at": s.last_tick_at.isoformat() if s.last_tick_at else None,
+            "last_market_review_at": s.last_market_review_at.isoformat() if getattr(s, 'last_market_review_at', None) else None,
+            "last_rotation_at": s.last_rotation_at.isoformat() if getattr(s, 'last_rotation_at', None) else None,
             "created_at": s.created_at.isoformat() if s.created_at else None,
         }
         for s in states
@@ -75,7 +85,16 @@ async def create_agent(req: CreateAgentRequest, db: AsyncSession = Depends(get_d
             detail=f"Insufficient wallet balance. Requested ${req.budget:.2f} MXN but only ${available:.2f} MXN available.",
         )
     try:
-        agent_id, chosen_strategy = await orchestrator.create_agent(req.strategy, req.params, req.budget, req.symbol)
+        agent_id, chosen_strategy = await orchestrator.create_agent(
+            req.strategy,
+            req.params,
+            req.budget,
+            req.symbol,
+            rotation_enabled=req.rotation_enabled,
+            aggressive_rotation=req.aggressive_rotation,
+            rotation_interval_minutes=req.rotation_interval_minutes,
+            min_rotation_score_delta=req.min_rotation_score_delta,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"agent_id": agent_id, "strategy": chosen_strategy, "status": "created"}
@@ -149,8 +168,14 @@ async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
         "losses_today": getattr(state, 'losses_today', 0) or 0,
         "realized_pnl_today": getattr(state, 'realized_pnl_today', 0.0) or 0.0,
         "realized_pnl_total": realized_pnl_total,
+        "rotation_enabled": bool(getattr(state, 'rotation_enabled', False)),
+        "aggressive_rotation": bool(getattr(state, 'aggressive_rotation', False)),
+        "rotation_interval_minutes": int(getattr(state, 'rotation_interval_minutes', 1) or 1),
+        "min_rotation_score_delta": float(getattr(state, 'min_rotation_score_delta', 1.0) or 1.0),
         "last_signal": state.last_signal,
         "last_tick_at": state.last_tick_at.isoformat() if state.last_tick_at else None,
+        "last_market_review_at": state.last_market_review_at.isoformat() if getattr(state, 'last_market_review_at', None) else None,
+        "last_rotation_at": state.last_rotation_at.isoformat() if getattr(state, 'last_rotation_at', None) else None,
         "created_at": state.created_at.isoformat() if state.created_at else None,
     }
 

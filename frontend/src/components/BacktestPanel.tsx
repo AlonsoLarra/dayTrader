@@ -34,17 +34,19 @@ function urgencyColor(urgency: string) {
 }
 
 function actionIcon(action: string) {
-  if (action === 'BUY SIGNAL') return <TrendingUp size={14} className="text-green-400" />;
-  if (action === 'SELL SIGNAL') return <TrendingDown size={14} className="text-red-400" />;
-  if (action === 'HOLDING') return <CheckCircle size={14} className="text-blue-400" />;
+  const normalized = action.toUpperCase();
+  if (normalized.includes('BUY')) return <TrendingUp size={14} className="text-green-400" />;
+  if (normalized.includes('SELL')) return <TrendingDown size={14} className="text-red-400" />;
+  if (normalized.includes('HOLD')) return <CheckCircle size={14} className="text-blue-400" />;
   return <Clock size={14} className="text-gray-400" />;
 }
 
 function actionBadge(action: string) {
   const base = 'text-xs font-semibold px-2 py-0.5 rounded-full';
-  if (action === 'BUY SIGNAL') return `${base} bg-green-900/50 text-green-300`;
-  if (action === 'SELL SIGNAL') return `${base} bg-red-900/50 text-red-300`;
-  if (action === 'HOLDING') return `${base} bg-blue-900/50 text-blue-300`;
+  const normalized = action.toUpperCase();
+  if (normalized.includes('BUY')) return `${base} bg-green-900/50 text-green-300`;
+  if (normalized.includes('SELL')) return `${base} bg-red-900/50 text-red-300`;
+  if (normalized.includes('HOLD')) return `${base} bg-blue-900/50 text-blue-300`;
   return `${base} bg-gray-800 text-gray-400`;
 }
 
@@ -185,41 +187,65 @@ function BotReasoningCard({ bot }: { bot: BotReasoning }) {
 function MarketScanner({ pairs, loading }: { pairs: PairScan[]; loading: boolean }) {
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-white">Market Scanner</h3>
-        <span className="text-xs text-gray-400">Opportunity score 0-100</span>
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <h3 className="text-sm font-semibold text-white">Pairs evaluated this cycle</h3>
+          <p className="text-xs text-gray-400 mt-1">
+            See which pairs the engine checked, the current buy/sell/hold bias, and the reason behind each call.
+          </p>
+        </div>
+        <span className="text-xs text-gray-400 shrink-0">Live market scan</span>
       </div>
       {loading ? (
         <div className="text-xs text-gray-500 py-4 text-center">Scanning pairs…</div>
       ) : (
-        <div className="space-y-2">
-          {pairs.map((p, i) => (
-            <div key={p.symbol} className="flex items-center gap-3">
-              <span className="text-xs text-gray-500 w-4">{i + 1}</span>
-              <span className="text-xs font-semibold text-white w-20">{p.symbol.replace('/MXN', '')}</span>
-              {/* Score bar */}
-              <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${p.score}%`,
-                    backgroundColor: p.score > 60 ? '#22c55e' : p.score > 30 ? '#f59e0b' : '#6b7280',
-                  }}
-                />
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {pairs.map((p, i) => {
+            const trackedCount = p.tracked_count ?? p.tracked_by?.length ?? 0;
+            return (
+              <div key={p.symbol} className="rounded-lg border border-gray-700 bg-gray-900/50 p-3 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">#{i + 1}</span>
+                      <span className="text-sm font-semibold text-white">{p.symbol}</span>
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1 uppercase">
+                      {p.strategy.replace('_', ' ')} · score {p.score.toFixed(1)}
+                    </div>
+                  </div>
+                  <span className={actionBadge(p.action)}>{p.action}</span>
+                </div>
+
+                <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
+                  <span>RSI {p.rsi.toFixed(1)}</span>
+                  <span>•</span>
+                  <span>{fmt(p.price)}</span>
+                  {trackedCount > 0 && (
+                    <>
+                      <span>•</span>
+                      <span className="text-blue-300">Being watched by {trackedCount} bot{trackedCount !== 1 ? 's' : ''}</span>
+                    </>
+                  )}
+                </div>
+
+                <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${Math.min(100, Math.max(0, p.score))}%`,
+                      backgroundColor: p.score > 60 ? '#22c55e' : p.score > 30 ? '#f59e0b' : '#6b7280',
+                    }}
+                  />
+                </div>
+
+                <div className="flex items-start gap-2 text-xs text-gray-300">
+                  {actionIcon(p.action)}
+                  <span>{p.reason}</span>
+                </div>
               </div>
-              <span className="text-xs text-gray-400 w-8 text-right">{p.score.toFixed(0)}</span>
-              {/* RSI chip */}
-              <span
-                className={`text-xs px-1.5 py-0.5 rounded font-mono ${
-                  p.rsi < 30 ? 'bg-green-900/50 text-green-300' :
-                  p.rsi > 70 ? 'bg-red-900/50 text-red-300' : 'bg-gray-700 text-gray-300'
-                }`}
-              >
-                {p.rsi.toFixed(0)}
-              </span>
-              <span className="text-xs text-gray-500 w-28 text-right">{fmt(p.price)}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

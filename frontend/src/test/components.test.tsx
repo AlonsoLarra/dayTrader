@@ -6,6 +6,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AutoTradeModal } from '../components/AutoTradeModal';
 import { WalletHeader } from '../components/WalletHeader';
+import { AgentCard } from '../components/AgentCard';
+import { BacktestPanel } from '../components/BacktestPanel';
 
 // vi.mock is hoisted — use vi.fn() inside the factory, not external variables
 vi.mock('../api/client', () => ({
@@ -20,6 +22,14 @@ vi.mock('../api/client', () => ({
   getAgents: vi.fn(),
   getPrices: vi.fn(),
   getPriceOhlcv: vi.fn(),
+  getAgentLogs: vi.fn(),
+  startAgent: vi.fn(),
+  stopAgent: vi.fn(),
+  killAgent: vi.fn(),
+  deleteAgent: vi.fn(),
+  getStrategyReasoning: vi.fn(),
+  getMarketScan: vi.fn(),
+  runBacktest: vi.fn(),
 }));
 
 vi.mock('../hooks/useWebSocket', () => ({
@@ -80,7 +90,15 @@ describe('AutoTradeModal', () => {
     fireEvent.click(screen.getByText(/Start Trading/i));
 
     await waitFor(() => expect(analyze).toHaveBeenCalledWith(10));
-    await waitFor(() => expect(deploy).toHaveBeenCalled());
+    await waitFor(() => expect(deploy).toHaveBeenCalledWith({
+      budget: 100,
+      max_agents: 3,
+      min_score: 20,
+      rotation_enabled: true,
+      rotation_interval_minutes: 1,
+      aggressive_rotation: true,
+      min_rotation_score_delta: 1,
+    }));
   });
 
   it('shows error message when deploy fails', async () => {
@@ -136,6 +154,100 @@ describe('App auth gate', () => {
     expect(apiMock.getTrades).not.toHaveBeenCalled();
     expect(apiMock.getAgents).not.toHaveBeenCalled();
     expect(apiMock.getPaperWallet).not.toHaveBeenCalled();
+  });
+});
+
+describe('AgentCard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (apiMock.getAgentLogs as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  });
+
+  it('shows active review cadence and rotation status', () => {
+    render(
+      <AgentCard
+        agent={{
+          agent_id: 'bot-1',
+          strategy: 'adaptive',
+          status: 'running',
+          symbol: 'SOL/MXN',
+          budget_allocated: 100,
+          budget_used: 25,
+          trades_today: 2,
+          losses_today: 0,
+          realized_pnl_today: 5,
+          realized_pnl_total: 8,
+          rotation_enabled: true,
+          aggressive_rotation: true,
+          rotation_interval_minutes: 1,
+          last_signal: 'hold',
+          last_tick_at: null,
+          last_market_review_at: null,
+          last_rotation_at: null,
+        }}
+        onUpdate={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/Adaptive review · 1m/i)).toBeInTheDocument();
+    expect(screen.getByText(/Market review active/i)).toBeInTheDocument();
+    expect(screen.getByText(/Every 1 min/i)).toBeInTheDocument();
+    expect(screen.getByText('Pending')).toBeInTheDocument();
+    expect(screen.getByText(/No switch yet/i)).toBeInTheDocument();
+  });
+});
+
+describe('BacktestPanel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (apiMock.getStrategyReasoning as ReturnType<typeof vi.fn>).mockResolvedValue({
+      bots: [
+        {
+          agent_id: 'bot-1',
+          symbol: 'XRP/MXN',
+          strategy: 'adaptive',
+          current_price: 23,
+          has_position: false,
+          entry_price: null,
+          unrealized_pnl: null,
+          stop_loss_price: null,
+          stop_loss_pct: 3,
+          reasoning: {
+            action: 'WAITING',
+            trigger: 'No buy: downtrend (price $23 < EMA50 $24)',
+            urgency: 'low',
+            rsi: 40,
+            oversold: 35,
+            overbought: 65,
+          },
+        },
+      ],
+    });
+    (apiMock.getMarketScan as ReturnType<typeof vi.fn>).mockResolvedValue({
+      pairs: [
+        {
+          symbol: 'AVAX/MXN',
+          score: 64,
+          rsi: 36,
+          price: 620,
+          strategy: 'adaptive',
+          action: 'BUY SIGNAL',
+          reason: 'Buy signal: uptrend + RSI pullback + volume confirmation',
+          confidence: 0.74,
+          tracked_count: 1,
+        },
+      ],
+    });
+  });
+
+  it('shows evaluated pairs and their current decision reasoning', async () => {
+    render(<BacktestPanel />);
+
+    await waitFor(() => expect(screen.getByText(/Pairs evaluated this cycle/i)).toBeInTheDocument());
+    expect(screen.getByText('AVAX/MXN')).toBeInTheDocument();
+    expect(screen.getAllByText(/BUY SIGNAL/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Buy signal: uptrend \+ RSI pullback \+ volume confirmation/i)).toBeInTheDocument();
+    expect(screen.getByText(/Being watched by 1 bot/i)).toBeInTheDocument();
   });
 });
 

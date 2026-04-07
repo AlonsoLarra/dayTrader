@@ -265,6 +265,28 @@ async def test_prices_endpoint(client):
     assert r.status_code in (200, 502)
 
 
+# ── Strategy visibility ───────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_strategy_market_scan_includes_pair_decisions(client):
+    r = await client.get("/api/strategy/market-scan")
+    assert r.status_code == 200
+    data = r.json()
+    assert "pairs" in data
+    assert isinstance(data["pairs"], list)
+    assert len(data["pairs"]) > 0
+    first = data["pairs"][0]
+    for key in ("symbol", "score", "rsi", "price", "strategy", "action", "reason"):
+        assert key in first, f"Missing key: {key}"
+
+
+@pytest.mark.asyncio
+async def test_strategy_reasoning_returns_bots_key(client):
+    r = await client.get("/api/strategy/reasoning")
+    assert r.status_code == 200
+    assert "bots" in r.json()
+
+
 # ── Portfolio / Smart Deploy ──────────────────────────────────────────────────
 
 @pytest.mark.asyncio

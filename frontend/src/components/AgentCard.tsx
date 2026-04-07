@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Play, Square, Skull, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { Play, Square, Skull, ChevronDown, ChevronUp, Trash2, Radar } from 'lucide-react';
 import clsx from 'clsx';
 import type { Agent, AgentLog } from '../types';
 import { BudgetGauge } from './BudgetGauge';
@@ -8,6 +8,16 @@ import { startAgent, stopAgent, killAgent, deleteAgent, getAgentLogs } from '../
 interface Props {
   agent: Agent;
   onUpdate: () => void;
+}
+
+function formatRelativeTime(value?: string | null, fallback = 'Pending') {
+  if (!value) return fallback;
+  const ts = value.endsWith('Z') ? value : `${value}Z`;
+  const diffSec = Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 1000));
+  if (diffSec < 5) return 'just now';
+  if (diffSec < 60) return `${diffSec}s ago`;
+  if (diffSec < 3600) return `${Math.round(diffSec / 60)}m ago`;
+  return `${Math.round(diffSec / 3600)}h ago`;
 }
 
 export function AgentCard({ agent, onUpdate }: Props) {
@@ -74,6 +84,8 @@ export function AgentCard({ agent, onUpdate }: Props) {
 
   const realizedPnlTotal = agent.realized_pnl_total ?? agent.realized_pnl_today ?? 0;
   const remainingBudget = Math.max(0, agent.budget_allocated + realizedPnlTotal - agent.budget_used);
+  const rotationEnabled = agent.rotation_enabled ?? false;
+  const reviewInterval = agent.rotation_interval_minutes ?? 1;
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
@@ -97,6 +109,12 @@ export function AgentCard({ agent, onUpdate }: Props) {
           'bg-red-900/60 text-red-400': agent.status === 'killed',
         })}>
           {statusLabel[agent.status] ?? agent.status}
+        </span>
+        <span className={clsx('text-xs px-2 py-0.5 rounded font-medium', {
+          'bg-indigo-900/60 text-indigo-300': rotationEnabled,
+          'bg-gray-700 text-gray-400': !rotationEnabled,
+        })}>
+          {rotationEnabled ? `Adaptive review · ${reviewInterval}m` : 'Pair locked'}
         </span>
       </div>
 
@@ -212,22 +230,31 @@ export function AgentCard({ agent, onUpdate }: Props) {
               <span className="text-gray-500 animate-pulse">analyzing…</span>
             )}
           </div>
-          <div className="text-gray-500">
-            {agent.last_tick_at
-              ? (() => {
-                  // Ensure UTC parsing — backend sends naive ISO strings without Z
-                  const ts = agent.last_tick_at.endsWith('Z')
-                    ? agent.last_tick_at
-                    : agent.last_tick_at + 'Z';
-                  const diffSec = Math.round((Date.now() - new Date(ts).getTime()) / 1000);
-                  if (diffSec < 5) return 'just now';
-                  if (diffSec < 60) return `${diffSec}s ago`;
-                  return `${Math.round(diffSec / 60)}m ago`;
-                })()
-              : 'first tick pending…'}
-          </div>
+          <div className="text-gray-500">{formatRelativeTime(agent.last_tick_at, 'first tick pending…')}</div>
         </div>
       )}
+
+      <div className="mb-2 rounded bg-gray-900 px-2 py-2 text-xs">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-gray-300">
+            <Radar size={12} className="text-indigo-300" />
+            <span>{rotationEnabled ? 'Market review active' : 'Market review off'}</span>
+          </div>
+          <span className={clsx('font-medium', rotationEnabled ? 'text-indigo-300' : 'text-gray-500')}>
+            {rotationEnabled ? `Every ${reviewInterval} min` : 'Current pair only'}
+          </span>
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-gray-400">
+          <div>
+            <div className="uppercase tracking-wide text-gray-500">Last review</div>
+            <div className="text-gray-200">{formatRelativeTime(agent.last_market_review_at, 'Pending')}</div>
+          </div>
+          <div>
+            <div className="uppercase tracking-wide text-gray-500">Last rotation</div>
+            <div className="text-gray-200">{formatRelativeTime(agent.last_rotation_at, 'No switch yet')}</div>
+          </div>
+        </div>
+      </div>
 
       <BudgetGauge allocated={agent.budget_allocated} used={agent.budget_used} />
 
