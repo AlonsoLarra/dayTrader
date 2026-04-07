@@ -8,6 +8,7 @@ export interface Agent {
   trades_today: number;
   losses_today: number;
   realized_pnl_today: number;
+  realized_pnl_total?: number;
   last_signal?: 'buy' | 'sell' | 'hold' | null;
   last_tick_at?: string | null;
   created_at?: string;

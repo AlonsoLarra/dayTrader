@@ -23,7 +23,12 @@ class RiskGuardrails:
             return False, "Bot is paused"
         if agent_state.trades_today >= self.max_trades_per_day:
             return False, f"Max trades per day ({self.max_trades_per_day}) reached"
-        remaining_budget = agent_state.budget_allocated - agent_state.budget_used
+        remaining_budget = getattr(
+            agent_state,
+            "effective_remaining_budget",
+            (agent_state.budget_allocated + getattr(agent_state, "realized_pnl_total", 0.0)) - agent_state.budget_used,
+        )
+        remaining_budget = max(0.0, float(remaining_budget or 0.0))
         if remaining_budget <= 0:
             return False, "No remaining budget"
 

@@ -100,6 +100,89 @@ async def test_set_paper_wallet_rejects_negative(client):
     assert r.status_code == 400
 
 
+@pytest.mark.asyncio
+async def test_paper_wallet_available_reflects_closed_agent_losses(client):
+    from datetime import datetime
+    from models import AgentState, Trade
+    from tests.conftest import TestingSessionLocal
+
+    await client.post("/api/settings/paper-wallet", json={"starting_balance": 500.0})
+
+    async with TestingSessionLocal() as session:
+        now = datetime.utcnow()
+        session.add(AgentState(
+            agent_id="loss-bot",
+            strategy="rsi",
+            status="killed",
+            budget_allocated=100.0,
+            budget_used=0.0,
+            trades_today=1,
+            losses_today=1,
+            realized_pnl_today=-20.0,
+            symbol="XRP/MXN",
+            created_at=now,
+            updated_at=now,
+        ))
+        session.add(Trade(
+            agent_id="loss-bot",
+            symbol="XRP/MXN",
+            side="sell",
+            amount=10.0,
+            price=8.0,
+            timestamp=now,
+            pnl=-20.0,
+            fee=1.0,
+            mode="paper",
+            strategy="rsi",
+        ))
+        await session.commit()
+
+    r = await client.get("/api/settings/paper-wallet")
+    assert r.status_code == 200
+    assert r.json()["available"] == pytest.approx(480.0)
+
+
+@pytest.mark.asyncio
+async def test_list_agents_includes_cumulative_realized_pnl(client):
+    from datetime import datetime
+    from models import AgentState, Trade
+    from tests.conftest import TestingSessionLocal
+
+    async with TestingSessionLocal() as session:
+        now = datetime.utcnow()
+        session.add(AgentState(
+            agent_id="running-loss-bot",
+            strategy="rsi",
+            status="running",
+            budget_allocated=100.0,
+            budget_used=0.0,
+            trades_today=2,
+            losses_today=1,
+            realized_pnl_today=-5.0,
+            symbol="XRP/MXN",
+            created_at=now,
+            updated_at=now,
+        ))
+        session.add(Trade(
+            agent_id="running-loss-bot",
+            symbol="XRP/MXN",
+            side="sell",
+            amount=5.0,
+            price=9.0,
+            timestamp=now,
+            pnl=-12.5,
+            fee=0.5,
+            mode="paper",
+            strategy="rsi",
+        ))
+        await session.commit()
+
+    r = await client.get("/api/agents")
+    assert r.status_code == 200
+    agent = next(a for a in r.json() if a["agent_id"] == "running-loss-bot")
+    assert agent["realized_pnl_total"] == pytest.approx(-12.5)
+
+
 # ── Agents ────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

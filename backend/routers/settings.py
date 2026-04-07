@@ -8,13 +8,12 @@ from pydantic import BaseModel
 from config import settings
 from exchange.client import create_exchange, get_balance
 from database import get_db
-from models import PaperWallet, AgentState
+from models import PaperWallet, AgentState, Trade
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
-async def get_available_budget(db: AsyncSession) -> float:
-    """Return how much MXN budget is still unallocated in the wallet."""
+async def _get_wallet_snapshot(db: AsyncSession):
     result = await db.execute(select(PaperWallet).limit(1))
     wallet = result.scalar_one_or_none()
     if not wallet:
@@ -22,11 +21,37 @@ async def get_available_budget(db: AsyncSession) -> float:
         db.add(wallet)
         await db.commit()
 
-    dep_result = await db.execute(
-        select(func.sum(AgentState.budget_allocated)).where(AgentState.status != "killed")
+    states_result = await db.execute(select(AgentState))
+    states = states_result.scalars().all()
+
+    pnl_result = await db.execute(
+        select(Trade.agent_id, func.sum(Trade.pnl))
+        .where(Trade.pnl.is_not(None))
+        .group_by(Trade.agent_id)
     )
-    deployed = dep_result.scalar() or 0.0
-    return max(0.0, wallet.starting_balance - deployed)
+    pnl_by_agent = {
+        agent_id: float(total or 0.0)
+        for agent_id, total in pnl_result.all()
+    }
+
+    total_realized_pnl = sum(pnl_by_agent.values())
+    deployed = 0.0
+    in_market = 0.0
+    for state in states:
+        if state.status == "killed":
+            continue
+        agent_equity = max(0.0, float(state.budget_allocated or 0.0) + pnl_by_agent.get(state.agent_id, 0.0))
+        deployed += agent_equity
+        in_market += float(state.budget_used or 0.0)
+
+    available = max(0.0, float(wallet.starting_balance or 0.0) + total_realized_pnl - deployed)
+    return wallet, deployed, in_market, available
+
+
+async def get_available_budget(db: AsyncSession) -> float:
+    """Return how much MXN budget is still unallocated in the wallet."""
+    _, _, _, available = await _get_wallet_snapshot(db)
+    return available
 
 class ModeUpdate(BaseModel):
     paper_mode: bool
@@ -53,27 +78,7 @@ async def set_mode(body: ModeUpdate):
 @router.get("/paper-wallet")
 async def get_paper_wallet(db: AsyncSession = Depends(get_db)):
     """Return paper wallet balance and breakdown."""
-    result = await db.execute(select(PaperWallet).limit(1))
-    wallet = result.scalar_one_or_none()
-    if not wallet:
-        # Seed with 100 MXN on first access
-        wallet = PaperWallet(starting_balance=100.0, updated_at=datetime.utcnow())
-        db.add(wallet)
-        await db.commit()
-
-    # Deployed = sum of budget_allocated for all non-killed agents
-    dep_result = await db.execute(
-        select(func.sum(AgentState.budget_allocated)).where(AgentState.status != "killed")
-    )
-    deployed = dep_result.scalar() or 0.0
-
-    # In-market = sum of budget_used (capital currently in open positions)
-    used_result = await db.execute(
-        select(func.sum(AgentState.budget_used)).where(AgentState.status != "killed")
-    )
-    in_market = used_result.scalar() or 0.0
-
-    available = max(0.0, wallet.starting_balance - deployed)
+    wallet, deployed, in_market, available = await _get_wallet_snapshot(db)
 
     return {
         "starting_balance": wallet.starting_balance,

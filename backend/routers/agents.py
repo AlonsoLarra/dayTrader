@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from pydantic import BaseModel
 from typing import Optional
 import ccxt
 
 from database import get_db
-from models import AgentState, AgentLog
+from models import AgentState, AgentLog, Trade
 from routers.settings import get_available_budget
 from agents.orchestrator import orchestrator
 
@@ -35,6 +35,17 @@ class CreateAgentRequest(BaseModel):
 async def list_agents(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(AgentState))
     states = result.scalars().all()
+
+    pnl_result = await db.execute(
+        select(Trade.agent_id, func.sum(Trade.pnl))
+        .where(Trade.pnl.is_not(None))
+        .group_by(Trade.agent_id)
+    )
+    pnl_by_agent = {
+        agent_id: float(total or 0.0)
+        for agent_id, total in pnl_result.all()
+    }
+
     return [
         {
             "agent_id": s.agent_id,
@@ -46,6 +57,7 @@ async def list_agents(db: AsyncSession = Depends(get_db)):
             "trades_today": s.trades_today,
             "losses_today": getattr(s, 'losses_today', 0) or 0,
             "realized_pnl_today": getattr(s, 'realized_pnl_today', 0.0) or 0.0,
+            "realized_pnl_total": pnl_by_agent.get(s.agent_id, 0.0),
             "last_signal": s.last_signal,
             "last_tick_at": s.last_tick_at.isoformat() if s.last_tick_at else None,
             "created_at": s.created_at.isoformat() if s.created_at else None,
@@ -117,6 +129,15 @@ async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
     state = result.scalar_one_or_none()
     if not state:
         raise HTTPException(status_code=404, detail="Agent not found")
+
+    pnl_result = await db.execute(
+        select(func.sum(Trade.pnl)).where(
+            Trade.agent_id == agent_id,
+            Trade.pnl.is_not(None),
+        )
+    )
+    realized_pnl_total = float(pnl_result.scalar() or 0.0)
+
     return {
         "agent_id": state.agent_id,
         "strategy": state.strategy,
@@ -127,6 +148,7 @@ async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
         "trades_today": state.trades_today,
         "losses_today": getattr(state, 'losses_today', 0) or 0,
         "realized_pnl_today": getattr(state, 'realized_pnl_today', 0.0) or 0.0,
+        "realized_pnl_total": realized_pnl_total,
         "last_signal": state.last_signal,
         "last_tick_at": state.last_tick_at.isoformat() if state.last_tick_at else None,
         "created_at": state.created_at.isoformat() if state.created_at else None,

@@ -72,7 +72,8 @@ export function AgentCard({ agent, onUpdate }: Props) {
     return () => clearInterval(id);
   }, [expanded, agent.status, agent.agent_id]);
 
-  const remainingBudget = agent.budget_allocated - agent.budget_used;
+  const realizedPnlTotal = agent.realized_pnl_total ?? agent.realized_pnl_today ?? 0;
+  const remainingBudget = Math.max(0, agent.budget_allocated + realizedPnlTotal - agent.budget_used);
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
@@ -163,7 +164,7 @@ export function AgentCard({ agent, onUpdate }: Props) {
         <div>
           <div className="text-gray-500 text-xs">Remaining</div>
           <div className={clsx('font-mono text-sm', remainingBudget < agent.budget_allocated * 0.5 ? 'text-amber-400' : 'text-white')}>
-            ${remainingBudget.toFixed(0)}
+            ${remainingBudget.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
         <div>

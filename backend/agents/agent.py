@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 
 from models import Trade, AgentLog, AgentState
 from strategies.base import BaseStrategy, Signal
@@ -71,6 +71,15 @@ class TradingAgent:
     async def _get_state(self, session: AsyncSession) -> Optional[AgentState]:
         result = await session.execute(select(AgentState).where(AgentState.agent_id == self.agent_id))
         return result.scalar_one_or_none()
+
+    async def _get_realized_pnl_total(self, session: AsyncSession) -> float:
+        result = await session.execute(
+            select(func.sum(Trade.pnl)).where(
+                Trade.agent_id == self.agent_id,
+                Trade.pnl.is_not(None),
+            )
+        )
+        return float(result.scalar() or 0.0)
 
     async def _update_state(self, session: AsyncSession, **kwargs):
         kwargs["updated_at"] = datetime.utcnow()
@@ -169,6 +178,13 @@ class TradingAgent:
                         except Exception as e:
                             await self._log(session, "error", f"Stop loss order failed: {e}")
 
+                realized_pnl_total = await self._get_realized_pnl_total(session)
+                state.realized_pnl_total = realized_pnl_total
+                state.effective_remaining_budget = max(
+                    0.0,
+                    float(state.budget_allocated or 0.0) + realized_pnl_total - float(state.budget_used or 0.0),
+                )
+
                 can_trade, reason = self.guardrails.can_trade(state)
                 if not can_trade:
                     await self._log(session, "info", f"Cannot trade: {reason}")
@@ -226,7 +242,10 @@ class TradingAgent:
                     await self._log(session, "info", "No open position to sell")
                     return
 
-                available_budget = state.budget_allocated - state.budget_used
+                available_budget = max(
+                    0.0,
+                    float(getattr(state, "effective_remaining_budget", state.budget_allocated - state.budget_used) or 0.0),
+                )
 
                 if result.signal == Signal.BUY:
                     if getattr(self.strategy, 'supports_adaptive_sizing', False):
@@ -421,10 +440,14 @@ class TradingAgent:
             )
             session.add(trade)
             # Update DB first, then clear in-memory
+            new_losses = ((getattr(state, 'losses_today', 0) or 0) + 1) if pnl < 0 else (getattr(state, 'losses_today', 0) or 0)
+            new_pnl_today = (getattr(state, 'realized_pnl_today', 0.0) or 0.0) + pnl
             await self._update_state(
                 session,
                 budget_used=max(0, (state.budget_used if state else 0) - buy_cost),
                 trades_today=(state.trades_today + 1) if state else 1,
+                losses_today=new_losses,
+                realized_pnl_today=new_pnl_today,
                 open_position_side=None,
                 open_position_price=None,
                 open_position_amount=None,
