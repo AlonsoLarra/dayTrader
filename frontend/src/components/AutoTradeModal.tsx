@@ -111,8 +111,8 @@ export function AutoTradeModal({ available, onClose, onDeployed }: Props) {
             </svg>
             <p className="text-sm text-gray-400">
               {pairs.length === 0
-                ? 'Scanning crypto pairs for opportunities…'
-                : `Found ${pairs.length} pairs — opening best positions…`}
+                ? 'Scanning all available Bitso MXN markets…'
+                : `Found ${pairs.length} top markets — opening best positions…`}
             </p>
             {pairs.length > 0 && (
               <p className="text-xs text-gray-500">
@@ -183,7 +183,7 @@ export function AutoTradeModal({ available, onClose, onDeployed }: Props) {
             <div className="bg-gray-900/50 rounded-lg p-3 text-xs text-gray-500 space-y-1.5">
               <div className="flex items-start gap-2">
                 <BarChart2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                <span>Scans 10 pairs using RSI and trend signals to find the best opportunities now</span>
+                <span>Scans all available Bitso MXN markets using RSI and trend signals to find the best opportunities now</span>
               </div>
               <div className="flex items-start gap-2">
                 <Zap className="w-3.5 h-3.5 mt-0.5 shrink-0" />

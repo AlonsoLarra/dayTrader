@@ -263,3 +263,37 @@ def test_rotation_decision_protects_deeply_underwater_trade():
     )
     assert action == "hold"
     assert "drawdown" in reason.lower()
+
+
+@pytest.mark.asyncio
+async def test_scan_best_opportunity_prefers_buy_signal_over_hold_rank(monkeypatch):
+    import agents.orchestrator as orch
+
+    async def fake_get_available_symbols(*args, **kwargs):
+        return ["AVAX/MXN", "BTC/MXN"]
+
+    async def fake_assess_market_opportunity(exchange, symbol, timeframe="15m", limit=100):
+        if symbol == "AVAX/MXN":
+            return {
+                "symbol": symbol,
+                "strategy": "trend_rsi",
+                "params": {},
+                "score": 0.0,
+                "eligible": False,
+            }
+        return {
+            "symbol": symbol,
+            "strategy": "trend_rsi",
+            "params": {},
+            "score": 67.5,
+            "eligible": True,
+        }
+
+    monkeypatch.setattr(orch, "get_available_symbols", fake_get_available_symbols, raising=False)
+    monkeypatch.setattr(orch, "assess_market_opportunity", fake_assess_market_opportunity)
+
+    symbol, strategy_name, params, score = await orch.scan_best_opportunity()
+
+    assert symbol == "BTC/MXN"
+    assert strategy_name == "trend_rsi"
+    assert score == 67.5

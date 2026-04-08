@@ -4,16 +4,16 @@ from datetime import datetime
 from typing import Optional
 
 import numpy as np
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from database import AsyncSessionLocal
-from models import AgentState
+from models import AgentState, PaperWallet, Trade
 from agents.agent import TradingAgent
 from strategies.ma_crossover import MACrossoverStrategy
 from strategies.rsi import RSIStrategy
 from strategies.trend_rsi import TrendRSIStrategy
 from strategies.adaptive import AdaptiveStrategy
-from exchange.client import create_exchange, get_ohlcv
+from exchange.client import create_exchange, get_available_symbols, get_ohlcv
 from risk.guardrails import RiskGuardrails
 from config import settings
 
@@ -25,6 +25,7 @@ STRATEGY_MAP = {
 }
 
 ALL_PAIRS = ["BTC/MXN", "ETH/MXN", "SOL/MXN", "XRP/MXN", "AVAX/MXN", "LTC/MXN"]
+AUTO_MIN_BUY_CONFIDENCE = 0.15
 
 
 def pick_auto_strategy_for_ohlcv(ohlcv: list) -> tuple:
@@ -112,6 +113,156 @@ def _score_pair(ohlcv: list) -> float:
         return 0.0
 
 
+def _normalize_market_action(signal_value: str) -> str:
+    normalized = (signal_value or "").lower()
+    if normalized == "buy":
+        return "BUY SIGNAL"
+    if normalized == "sell":
+        return "SELL SIGNAL"
+    return "WAITING"
+
+
+async def assess_market_opportunity(exchange, symbol: str, timeframe: str = "15m", limit: int = 100) -> dict:
+    """Score a market specifically for long-only auto-trade deployment and rotation."""
+    try:
+        ohlcv = await get_ohlcv(exchange, symbol, timeframe, limit)
+        if len(ohlcv) < 20:
+            return {
+                "symbol": symbol,
+                "score": 0.0,
+                "base_score": 0.0,
+                "strategy": "trend_rsi",
+                "params": {},
+                "signal": "hold",
+                "action": "WAITING",
+                "confidence": 0.0,
+                "reason": "Insufficient data",
+                "eligible": False,
+                "indicators": {},
+            }
+
+        base_score = float(_score_pair(ohlcv) or 0.0)
+        strategy_name, params = pick_auto_strategy_for_ohlcv(ohlcv)
+        strategy_cls = STRATEGY_MAP.get(strategy_name, AdaptiveStrategy)
+        strategy = strategy_cls(params)
+
+        if getattr(strategy, "min_candles", 0) > len(ohlcv):
+            return {
+                "symbol": symbol,
+                "score": 0.0,
+                "base_score": round(base_score, 2),
+                "strategy": strategy_name,
+                "params": params,
+                "signal": "hold",
+                "action": "WAITING",
+                "confidence": 0.0,
+                "reason": f"Insufficient data ({len(ohlcv)} candles)",
+                "eligible": False,
+                "indicators": {},
+            }
+
+        import inspect
+
+        sig = inspect.signature(strategy.analyze)
+        if "entry_price" in sig.parameters:
+            result = strategy.analyze(ohlcv, entry_price=None, candles_held=0)
+        else:
+            result = strategy.analyze(ohlcv)
+
+        signal = result.signal.value
+        confidence = round(float(result.confidence or 0.0), 2)
+        indicators = result.indicators or {}
+        in_uptrend = bool(indicators.get("in_uptrend", False))
+        volume_ok = bool(indicators.get("volume_ok", False))
+
+        score = 0.0
+        if signal == "buy":
+            score = base_score + 18.0 + confidence * 22.0
+            if in_uptrend:
+                score += 3.0
+            if volume_ok:
+                score += 2.0
+        elif signal == "hold":
+            score = min(base_score * (0.35 if in_uptrend else 0.2), 24.0)
+        else:
+            score = min(base_score * 0.1, 10.0)
+
+        eligible = signal == "buy" and confidence >= AUTO_MIN_BUY_CONFIDENCE
+        if not eligible:
+            score = min(score, 24.0)
+
+        return {
+            "symbol": symbol,
+            "score": round(min(100.0, max(0.0, score)), 2),
+            "base_score": round(base_score, 2),
+            "strategy": strategy_name,
+            "params": params,
+            "signal": signal,
+            "action": _normalize_market_action(signal),
+            "confidence": confidence,
+            "reason": result.reasoning,
+            "eligible": eligible,
+            "indicators": indicators,
+        }
+    except Exception as exc:
+        return {
+            "symbol": symbol,
+            "score": 0.0,
+            "base_score": 0.0,
+            "strategy": "ma_crossover",
+            "params": {},
+            "signal": "hold",
+            "action": "WAITING",
+            "confidence": 0.0,
+            "reason": f"Scan failed: {exc}",
+            "eligible": False,
+            "indicators": {},
+        }
+
+
+async def _validate_agent_creation(session, symbol: str, budget: float) -> None:
+    """Guard against duplicate pair allocation and wallet oversubscription."""
+    result = await session.execute(select(AgentState).where(AgentState.status != "killed"))
+    states = result.scalars().all()
+
+    if any((state.symbol or settings.TRADING_PAIR) == symbol for state in states):
+        raise ValueError(
+            f"{symbol} already has a bot using wallet funds. Stop or delete it before creating another."
+        )
+
+    wallet_result = await session.execute(select(PaperWallet).limit(1))
+    wallet = wallet_result.scalar_one_or_none()
+    if wallet is None:
+        wallet = PaperWallet(starting_balance=100.0, updated_at=datetime.utcnow())
+        session.add(wallet)
+        await session.flush()
+
+    pnl_result = await session.execute(
+        select(Trade.agent_id, func.sum(Trade.pnl))
+        .where(Trade.pnl.is_not(None))
+        .group_by(Trade.agent_id)
+    )
+    pnl_by_agent = {
+        agent_id: float(total or 0.0)
+        for agent_id, total in pnl_result.all()
+    }
+
+    total_realized_pnl = sum(pnl_by_agent.values())
+    deployed = 0.0
+    for state in states:
+        agent_equity = max(
+            0.0,
+            float(state.budget_allocated or 0.0) + pnl_by_agent.get(state.agent_id, 0.0),
+        )
+        deployed += agent_equity
+
+    available = max(0.0, float(wallet.starting_balance or 0.0) + total_realized_pnl - deployed)
+    if float(budget or 0.0) > available + 1e-9:
+        raise ValueError(
+            f"Insufficient wallet balance. Requested ${float(budget):.2f} MXN but only ${available:.2f} MXN available."
+        )
+
+
 def evaluate_rotation_decision(
     current_symbol: str,
     current_score: float,
@@ -129,7 +280,7 @@ def evaluate_rotation_decision(
     if cooldown_active:
         return "hold", "Rotation cooldown is still active after the last switch"
     if float(best_score or 0.0) <= 0.0:
-        return "hold", "No strong alternative setup was found in the latest market scan"
+        return "hold", "No stronger long setup with better upside was found in the latest market scan"
     if best_symbol == current_symbol:
         return "hold", f"{current_symbol} remains the best-ranked setup right now"
     if score_delta < float(min_score_delta or 0.0):
@@ -147,62 +298,32 @@ def evaluate_rotation_decision(
     return "rotate", f"Rotate from {current_symbol} to {best_symbol}: score edge +{score_delta:.1f} supports a stronger setup"
 
 
-async def scan_best_opportunity(exclude_symbol: Optional[str] = None) -> tuple:
+async def scan_best_opportunity(exclude_symbol: Optional[str] = None, blocked_symbols: Optional[set] = None) -> tuple:
     """
-    Scan all trading pairs and return the best opportunity right now.
+    Scan all currently available Bitso MXN markets and return the strongest long setup.
     Returns (symbol, strategy_name, params, score).
-    Falls back to BTC/MXN with MA Crossover if all scans fail.
+    A positive score means the pair has an active BUY setup with enough confidence to justify deployment/rotation.
     """
     exchange = create_exchange()
-    pairs_to_scan = [p for p in ALL_PAIRS if p != exclude_symbol] + (
-        [exclude_symbol] if exclude_symbol else []
-    )
+    blocked = {sym for sym in (blocked_symbols or set()) if sym}
+    all_pairs = await get_available_symbols("MXN")
+    pairs_to_scan = [p for p in all_pairs if p not in blocked and p != exclude_symbol]
+    if exclude_symbol and exclude_symbol in all_pairs and exclude_symbol not in blocked:
+        pairs_to_scan.append(exclude_symbol)
+    if not pairs_to_scan:
+        pairs_to_scan = [p for p in all_pairs if p not in blocked]
+    if not pairs_to_scan:
+        return (exclude_symbol or settings.TRADING_PAIR, "ma_crossover", {}, 0.0)
 
     async def _score_one(symbol: str):
-        try:
-            ohlcv = await get_ohlcv(exchange, symbol, "15m", 50)
-            base_score = _score_pair(ohlcv)
-
-            # Auto-trade now leans into a more active profile:
-            # Trend RSI for most markets, RSI for violent swings, Adaptive only in calm tape.
-            strategy_name, params = pick_auto_strategy_for_ohlcv(ohlcv)
-
-            strategy_cls = STRATEGY_MAP.get(strategy_name, AdaptiveStrategy)
-            strategy = strategy_cls(params)
-            if getattr(strategy, "min_candles", 0) > len(ohlcv):
-                result = None
-            else:
-                import inspect
-                sig = inspect.signature(strategy.analyze)
-                if "entry_price" in sig.parameters:
-                    result = strategy.analyze(ohlcv, entry_price=None, candles_held=0)
-                else:
-                    result = strategy.analyze(ohlcv)
-
-            signal_bonus = 0.0
-            if result is not None:
-                if result.signal.value == "buy":
-                    signal_bonus += 18.0 + float(result.confidence or 0.0) * 22.0
-                elif result.signal.value == "sell":
-                    signal_bonus -= 8.0
-                else:
-                    signal_bonus += float(result.confidence or 0.0) * 4.0
-
-                if result.indicators.get("in_uptrend"):
-                    signal_bonus += 3.0
-                if result.indicators.get("volume_ok"):
-                    signal_bonus += 2.0
-
-            score = round(min(100.0, max(0.0, base_score + signal_bonus)), 2)
-            return symbol, strategy_name, params, score
-        except Exception:
-            return symbol, "ma_crossover", {}, 0.0
+        market = await assess_market_opportunity(exchange, symbol, timeframe="15m", limit=100)
+        if not market.get("eligible"):
+            return symbol, market.get("strategy", "ma_crossover"), market.get("params", {}), 0.0
+        return symbol, market["strategy"], market.get("params", {}), float(market.get("score", 0.0) or 0.0)
 
     results = await asyncio.gather(*[_score_one(sym) for sym in pairs_to_scan])
-
-    # Sort by score descending, pick best
     results = sorted(results, key=lambda x: x[3], reverse=True)
-    best = results[0] if results else ("BTC/MXN", "ma_crossover", {}, 0.0)
+    best = results[0] if results else (exclude_symbol or settings.TRADING_PAIR, "ma_crossover", {}, 0.0)
     return best  # (symbol, strategy_name, params, score)
 
 
@@ -215,6 +336,8 @@ class AgentOrchestrator:
             cls._instance._agents: dict[str, TradingAgent] = {}
             cls._instance._tasks: dict[str, asyncio.Task] = {}
             cls._instance._broadcaster = None
+            cls._instance._create_lock = None
+            cls._instance._create_lock_loop = None
         return cls._instance
 
     def set_broadcaster(self, broadcaster) -> None:
@@ -302,7 +425,12 @@ class AgentOrchestrator:
         if strategy_name == "auto":
             rotation_enabled = True
             aggressive_rotation = True
-            best_symbol, strategy_name, params, score = await scan_best_opportunity()
+            blocked_symbols = {
+                getattr(agent, "symbol", None)
+                for agent in self._agents.values()
+                if getattr(agent, "symbol", None)
+            }
+            best_symbol, strategy_name, params, score = await scan_best_opportunity(blocked_symbols=blocked_symbols)
             symbol = best_symbol
         
         strategy_cls = STRATEGY_MAP.get(strategy_name)
@@ -334,26 +462,33 @@ class AgentOrchestrator:
         )
         agent._broadcaster = self._broadcaster
 
-        async with AsyncSessionLocal() as session:
-            state = AgentState(
-                agent_id=agent_id,
-                strategy=strategy_name,
-                status="stopped",
-                budget_allocated=budget,
-                budget_used=0.0,
-                trades_today=0,
-                losses_today=0,
-                realized_pnl_today=0.0,
-                rotation_enabled=rotation_enabled,
-                aggressive_rotation=aggressive_rotation,
-                rotation_interval_minutes=rotation_interval_minutes,
-                min_rotation_score_delta=min_rotation_score_delta,
-                symbol=symbol,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
-            )
-            session.add(state)
-            await session.commit()
+        current_loop = asyncio.get_running_loop()
+        if self._create_lock is None or self._create_lock_loop is not current_loop:
+            self._create_lock = asyncio.Lock()
+            self._create_lock_loop = current_loop
+
+        async with self._create_lock:
+            async with AsyncSessionLocal() as session:
+                await _validate_agent_creation(session, symbol, budget)
+                state = AgentState(
+                    agent_id=agent_id,
+                    strategy=strategy_name,
+                    status="stopped",
+                    budget_allocated=budget,
+                    budget_used=0.0,
+                    trades_today=0,
+                    losses_today=0,
+                    realized_pnl_today=0.0,
+                    rotation_enabled=rotation_enabled,
+                    aggressive_rotation=aggressive_rotation,
+                    rotation_interval_minutes=rotation_interval_minutes,
+                    min_rotation_score_delta=min_rotation_score_delta,
+                    symbol=symbol,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+                session.add(state)
+                await session.commit()
 
         self._agents[agent_id] = agent
         return agent_id, strategy_name

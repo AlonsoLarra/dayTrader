@@ -1,13 +1,15 @@
 import asyncio
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from config import settings
-from exchange.client import create_exchange, get_ohlcv
-from agents.orchestrator import orchestrator, pick_auto_strategy_for_ohlcv
+from exchange.client import create_exchange, get_available_symbols, get_ohlcv
+from agents.orchestrator import STRATEGY_MAP, orchestrator, pick_auto_strategy_for_ohlcv
 from database import get_db
+from models import AgentState
 from routers.settings import get_available_budget
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
@@ -113,14 +115,51 @@ async def _analyze_pair(exchange, symbol: str) -> dict:
         elif vol_ratio > 1.0:
             score += 5
 
-        score = max(0.0, min(100.0, score))
         strategy, params = pick_auto_strategy_for_ohlcv(ohlcv)
         strategy_reason = {
             "trend_rsi": "active trend pullback profile",
             "adaptive": "adaptive calm-market profile",
             "rsi": "high-vol swing profile",
         }.get(strategy, strategy)
+
+        signal = "hold"
+        action = "WAITING"
+        confidence = 0.0
+        eligible = False
+
+        strategy_cls = STRATEGY_MAP.get(strategy)
+        if strategy_cls:
+            signal_ohlcv = await get_ohlcv(exchange, symbol, "15m", 100)
+            strategy_obj = strategy_cls(params)
+            if len(signal_ohlcv) >= getattr(strategy_obj, "min_candles", 0):
+                import inspect
+
+                sig = inspect.signature(strategy_obj.analyze)
+                if "entry_price" in sig.parameters:
+                    result = strategy_obj.analyze(signal_ohlcv, entry_price=None, candles_held=0)
+                else:
+                    result = strategy_obj.analyze(signal_ohlcv)
+
+                signal = result.signal.value
+                action = {"buy": "BUY SIGNAL", "sell": "SELL SIGNAL"}.get(signal, "WAITING")
+                confidence = round(float(result.confidence or 0.0), 2)
+                eligible = signal == "buy" and confidence >= 0.15
+                reasons.append(result.reasoning)
+
+                if signal == "buy":
+                    score += 18.0 + confidence * 22.0
+                    if result.indicators.get("in_uptrend"):
+                        score += 3.0
+                    if result.indicators.get("volume_ok"):
+                        score += 2.0
+                else:
+                    score = min(score, 24.0 if signal == "hold" else 10.0)
+
+                if not eligible:
+                    score = min(score, 24.0)
+
         reasons.append(strategy_reason)
+        score = max(0.0, min(100.0, score))
 
         return {
             "symbol": symbol,
@@ -128,6 +167,10 @@ async def _analyze_pair(exchange, symbol: str) -> dict:
             "strategy": strategy,
             "params": params,
             "reason": " · ".join(reasons),
+            "action": action,
+            "signal": signal,
+            "confidence": confidence,
+            "eligible": eligible,
             "rsi": round(rsi, 1),
             "volatility": round(volatility, 2),
             "ma_bullish": ma_bullish,
@@ -140,11 +183,7 @@ async def _analyze_pair(exchange, symbol: str) -> dict:
 async def analyze_market(max_pairs: int = 10):
     """Analyze all available pairs and return scores without deploying."""
     exchange = create_exchange()
-    symbols = [
-        "BTC/MXN", "ETH/MXN", "SOL/MXN", "XRP/MXN",
-        "AVAX/MXN", "LTC/MXN", "MATIC/MXN", "LINK/MXN",
-        "DOT/MXN", "DOGE/MXN",
-    ]
+    symbols = await get_available_symbols("MXN")
     results = await asyncio.gather(*[_analyze_pair(exchange, s) for s in symbols])
     sorted_results = sorted(results, key=lambda x: x["score"], reverse=True)
     return {"pairs": sorted_results[:max_pairs]}
@@ -167,20 +206,35 @@ async def deploy_portfolio(req: DeployRequest, db: AsyncSession = Depends(get_db
             detail=f"Insufficient wallet balance. Requested ${req.budget:.2f} MXN but only ${available:.2f} MXN available.",
         )
 
+    active_symbols_result = await db.execute(
+        select(AgentState.symbol).where(AgentState.status != "killed")
+    )
+    active_symbols = {row[0] for row in active_symbols_result.all() if row[0]}
+
     exchange = create_exchange()
-    symbols = [
-        "BTC/MXN", "ETH/MXN", "SOL/MXN", "XRP/MXN",
-        "AVAX/MXN", "LTC/MXN", "MATIC/MXN", "LINK/MXN",
-    ]
+    symbols = await get_available_symbols("MXN")
+    symbols = [symbol for symbol in symbols if symbol not in active_symbols]
+
+    if not symbols:
+        raise HTTPException(
+            status_code=400,
+            detail="All supported pairs already have active bots. Stop or delete one before deploying more.",
+        )
 
     results = await asyncio.gather(*[_analyze_pair(exchange, s) for s in symbols])
-    scored = [r for r in results if r["score"] >= req.min_score]
+    scored = [
+        r for r in results
+        if r["score"] >= req.min_score and r.get("eligible") and r.get("signal") == "buy"
+    ]
     scored = sorted(scored, key=lambda x: x["score"], reverse=True)[: req.max_agents]
 
     if not scored:
         raise HTTPException(
             status_code=400,
-            detail=f"No pairs scored above {req.min_score}. Try lowering min_score or try again later.",
+            detail=(
+                f"No markets currently have a strong long buy setup above score {req.min_score}. "
+                "The system will keep scanning — try again in a minute or lower min_score."
+            ),
         )
 
     total_score = sum(r["score"] for r in scored)

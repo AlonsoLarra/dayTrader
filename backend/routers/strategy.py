@@ -7,12 +7,9 @@ import numpy as np
 from fastapi import APIRouter
 
 from agents.orchestrator import STRATEGY_MAP, _score_pair, orchestrator, pick_auto_strategy_for_ohlcv
-from exchange.client import create_exchange, get_ohlcv, get_ticker
+from exchange.client import create_exchange, get_available_symbols, get_ohlcv, get_ticker
 
 router = APIRouter(prefix="/api/strategy", tags=["strategy"])
-
-SYMBOLS = ["BTC/MXN", "ETH/MXN", "SOL/MXN", "XRP/MXN", "AVAX/MXN", "LTC/MXN"]
-
 
 def _compute_rsi(closes: list, period: int = 14) -> float:
     if len(closes) < period + 2:
@@ -261,6 +258,7 @@ async def get_market_scan():
                 "tracked_count": 0,
             }
 
-    results = await asyncio.gather(*[_scan_one(s) for s in SYMBOLS])
+    symbols = await get_available_symbols("MXN")
+    results = await asyncio.gather(*[_scan_one(s) for s in symbols])
     results = sorted(results, key=lambda x: x["score"], reverse=True)
     return {"pairs": results}

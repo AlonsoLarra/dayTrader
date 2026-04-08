@@ -1,4 +1,7 @@
 import asyncio
+import time
+from typing import List
+
 import ccxt
 from config import settings
 from exchange.paper_trading import PaperExchange
@@ -32,6 +35,69 @@ def _run_sync(fn, *args, **kwargs):
     """Run a synchronous ccxt call in a thread pool executor."""
     loop = asyncio.get_event_loop()
     return loop.run_in_executor(None, lambda: fn(*args, **kwargs))
+
+
+DEFAULT_SUPPORTED_SYMBOLS = [
+    "AVAX/MXN",
+    "BAT/MXN",
+    "BCH/MXN",
+    "BTC/MXN",
+    "ETH/MXN",
+    "EUR/MXN",
+    "LTC/MXN",
+    "MANA/MXN",
+    "PYUSD/MXN",
+    "RLUSD/MXN",
+    "SOL/MXN",
+    "TRX/MXN",
+    "TUSD/MXN",
+    "USD/MXN",
+    "USDS/MXN",
+    "USDT/MXN",
+    "XRP/MXN",
+]
+_SYMBOLS_CACHE: dict = {}
+_SYMBOLS_CACHE_TS: dict = {}
+_SYMBOLS_CACHE_TTL_SECONDS = 300
+_PUBLIC_BITSO = ccxt.bitso({"enableRateLimit": True})
+
+
+def _fallback_symbols_for_quote(quote_currency: str) -> List[str]:
+    normalized_quote = (quote_currency or "MXN").upper()
+    return [symbol for symbol in DEFAULT_SUPPORTED_SYMBOLS if symbol.endswith(f"/{normalized_quote}")]
+
+
+async def get_available_symbols(quote_currency: str = "MXN") -> List[str]:
+    """Return Bitso's currently active spot symbols for the requested quote currency."""
+    normalized_quote = (quote_currency or "MXN").upper()
+    now = time.time()
+    cached = _SYMBOLS_CACHE.get(normalized_quote)
+    cached_at = _SYMBOLS_CACHE_TS.get(normalized_quote, 0.0)
+
+    if cached and now - cached_at < _SYMBOLS_CACHE_TTL_SECONDS:
+        return list(cached)
+
+    try:
+        markets = await _run_sync(_PUBLIC_BITSO.load_markets, True)
+        symbols = sorted({
+            market.get("symbol")
+            for market in markets.values()
+            if market.get("symbol")
+            and market.get("spot", True)
+            and market.get("active", True) is not False
+            and market.get("quote") == normalized_quote
+        })
+        if symbols:
+            _SYMBOLS_CACHE[normalized_quote] = list(symbols)
+            _SYMBOLS_CACHE_TS[normalized_quote] = now
+            return list(symbols)
+    except Exception:
+        pass
+
+    fallback = _fallback_symbols_for_quote(normalized_quote)
+    _SYMBOLS_CACHE[normalized_quote] = list(fallback)
+    _SYMBOLS_CACHE_TS[normalized_quote] = now
+    return list(fallback)
 
 
 async def get_balance(exchange) -> dict:

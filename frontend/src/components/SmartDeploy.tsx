@@ -72,7 +72,7 @@ export function SmartDeploy({ walletBalance, onDeployed }: Props) {
         <span className="text-sm font-semibold text-gray-200 uppercase tracking-wide">Auto-Trade</span>
       </div>
       <p className="text-xs text-gray-500 mb-5">
-        Set a budget, click Start — the system analyzes all crypto pairs and automatically opens the best positions.
+        Set a budget, click Start — the system analyzes all available Bitso MXN markets and automatically opens the best positions.
       </p>
 
       {/* Success */}
@@ -180,7 +180,7 @@ export function SmartDeploy({ walletBalance, onDeployed }: Props) {
           <div className="text-xs text-gray-600 bg-gray-900/50 rounded p-3 space-y-1">
             <div className="flex items-start gap-2">
               <BarChart2 className="w-3 h-3 mt-0.5 shrink-0 text-gray-500" />
-              <span>Scans 10 crypto pairs for opportunities using RSI and trend analysis</span>
+              <span>Scans all available Bitso MXN markets for opportunities using RSI and trend analysis</span>
             </div>
             <div className="flex items-start gap-2">
               <Zap className="w-3 h-3 mt-0.5 shrink-0 text-gray-500" />

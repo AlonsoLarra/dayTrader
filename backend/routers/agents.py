@@ -9,19 +9,14 @@ from database import get_db
 from models import AgentState, AgentLog, Trade
 from routers.settings import get_available_budget
 from agents.orchestrator import orchestrator
+from exchange.client import get_available_symbols
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
-SUPPORTED_SYMBOLS = [
-    "BTC/MXN", "ETH/MXN", "SOL/MXN", "XRP/MXN",
-    "AVAX/MXN", "LTC/MXN", "BCH/MXN", "MANA/MXN", "TRX/MXN", "BAT/MXN",
-]
-
-
 @router.get("/markets")
 async def list_markets():
-    """Return tradeable symbols on Bitso."""
-    return {"symbols": SUPPORTED_SYMBOLS}
+    """Return currently tradeable Bitso MXN symbols."""
+    return {"symbols": await get_available_symbols("MXN")}
 
 
 class CreateAgentRequest(BaseModel):

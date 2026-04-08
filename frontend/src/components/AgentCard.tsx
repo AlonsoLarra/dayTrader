@@ -86,6 +86,12 @@ export function AgentCard({ agent, onUpdate }: Props) {
   const remainingBudget = Math.max(0, agent.budget_allocated + realizedPnlTotal - agent.budget_used);
   const rotationEnabled = agent.rotation_enabled ?? false;
   const reviewInterval = agent.rotation_interval_minutes ?? 1;
+  const strategyLabel = {
+    trend_rsi: 'Trend RSI',
+    adaptive: 'Adaptive',
+    rsi: 'RSI',
+    ma_crossover: 'MA Crossover',
+  }[agent.strategy] ?? agent.strategy;
 
   return (
     <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
@@ -114,7 +120,7 @@ export function AgentCard({ agent, onUpdate }: Props) {
           'bg-indigo-900/60 text-indigo-300': rotationEnabled,
           'bg-gray-700 text-gray-400': !rotationEnabled,
         })}>
-          {rotationEnabled ? `Adaptive review · ${reviewInterval}m` : 'Pair locked'}
+          {rotationEnabled ? `${strategyLabel} review · ${reviewInterval}m` : 'Pair locked'}
         </span>
       </div>
 

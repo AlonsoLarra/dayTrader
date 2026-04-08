@@ -108,7 +108,7 @@ export function CreateAgentModal({ onClose, onCreate }: Props) {
 
           {/* Trading Pair */}
           <div>
-            <label className="block text-sm text-gray-300 font-medium mb-1">Crypto</label>
+            <label className="block text-sm text-gray-300 font-medium mb-1">Market</label>
             <select
               value={symbol}
               onChange={e => setSymbol(e.target.value)}
