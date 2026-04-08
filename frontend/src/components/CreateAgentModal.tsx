@@ -11,8 +11,20 @@ const STRATEGIES = [
   {
     value: 'auto',
     label: 'Auto (Recommended)',
-    description: 'Automatically picks the best strategy based on current market conditions. High volatility → RSI. Trending market → MA Crossover.',
+    description: 'Active autopilot: prefers Trend RSI for faster entries, switches to RSI during sharp volatility, and rotates to stronger pairs automatically.',
     border: 'border-l-2 border-l-blue-500',
+  },
+  {
+    value: 'trend_rsi',
+    label: 'Trend RSI',
+    description: 'More active. Buys pullbacks in uptrends, takes quicker profits, and frees capital if momentum stalls.',
+    border: 'border-l-2 border-l-cyan-500',
+  },
+  {
+    value: 'adaptive',
+    label: 'Adaptive',
+    description: 'Most flexible. Adapts thresholds and trailing exits to market conditions, but is more selective about entries.',
+    border: 'border-l-2 border-l-emerald-500',
   },
   {
     value: 'ma_crossover',

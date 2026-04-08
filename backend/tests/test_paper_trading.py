@@ -24,6 +24,13 @@ def _ticker(price):
     return {"last": price, "symbol": SYMBOL, "timestamp": 0}
 
 
+def _ohlcv_from_closes(closes, volume=100.0):
+    rows = []
+    for idx, close in enumerate(closes):
+        rows.append([idx, close, close * 1.01, close * 0.99, close, volume])
+    return rows
+
+
 # ── Balance ────────────────────────────────────────────────────────────────────
 
 def test_initial_mxn_balance():
@@ -147,7 +154,7 @@ def test_sell_without_holding_raises():
 # ── Guardrails ────────────────────────────────────────────────────────────────
 
 from risk.guardrails import RiskGuardrails  # noqa: E402
-from agents.orchestrator import evaluate_rotation_decision  # noqa: E402
+from agents.orchestrator import evaluate_rotation_decision, pick_auto_strategy_for_ohlcv  # noqa: E402
 
 
 @pytest.fixture()
@@ -179,6 +186,21 @@ def test_stop_loss_triggers_on_drop(guardrails):
 
 def test_stop_loss_no_trigger_small_drop(guardrails):
     assert guardrails.check_stop_loss(entry_price=100.0, current_price=98.0, side="buy") is False
+
+
+def test_pick_auto_strategy_prefers_trend_rsi_for_normal_markets():
+    closes = [100 + (i * 0.35) + ((-1) ** i) * 0.2 for i in range(80)]
+    strategy_name, params = pick_auto_strategy_for_ohlcv(_ohlcv_from_closes(closes, volume=120.0))
+    assert strategy_name == "trend_rsi"
+    assert params["rsi_buy"] >= 47
+    assert params["volume_factor"] <= 1.0
+
+
+def test_pick_auto_strategy_uses_rsi_when_volatility_is_extreme():
+    closes = [100, 108, 94, 111, 90, 114, 88, 117] * 10
+    strategy_name, params = pick_auto_strategy_for_ohlcv(_ohlcv_from_closes(closes, volume=140.0))
+    assert strategy_name == "rsi"
+    assert params["oversold"] >= 35
 
 
 def test_rotation_decision_rotates_for_stronger_market():

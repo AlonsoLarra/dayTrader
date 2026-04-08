@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from config import settings
 from exchange.client import create_exchange, get_ohlcv
-from agents.orchestrator import orchestrator
+from agents.orchestrator import orchestrator, pick_auto_strategy_for_ohlcv
 from database import get_db
 from routers.settings import get_available_budget
 
@@ -114,12 +114,19 @@ async def _analyze_pair(exchange, symbol: str) -> dict:
             score += 5
 
         score = max(0.0, min(100.0, score))
-        strategy = "rsi" if rsi < 45 or volatility > 2.5 else "ma_crossover"
+        strategy, params = pick_auto_strategy_for_ohlcv(ohlcv)
+        strategy_reason = {
+            "trend_rsi": "active trend pullback profile",
+            "adaptive": "adaptive calm-market profile",
+            "rsi": "high-vol swing profile",
+        }.get(strategy, strategy)
+        reasons.append(strategy_reason)
 
         return {
             "symbol": symbol,
             "score": round(score, 1),
             "strategy": strategy,
+            "params": params,
             "reason": " · ".join(reasons),
             "rsi": round(rsi, 1),
             "volatility": round(volatility, 2),
@@ -186,11 +193,7 @@ async def deploy_portfolio(req: DeployRequest, db: AsyncSession = Depends(get_db
         if allocated < 10:
             allocated = 10.0
 
-        params = (
-            {"period": 14, "oversold": 35, "overbought": 65}
-            if pair["strategy"] == "rsi"
-            else {"fast_period": 9, "slow_period": 21}
-        )
+        params = pair.get("params", {})
 
         try:
             agent_id, strategy_name = await orchestrator.create_agent(

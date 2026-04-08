@@ -27,6 +27,48 @@ STRATEGY_MAP = {
 ALL_PAIRS = ["BTC/MXN", "ETH/MXN", "SOL/MXN", "XRP/MXN", "AVAX/MXN", "LTC/MXN"]
 
 
+def pick_auto_strategy_for_ohlcv(ohlcv: list) -> tuple:
+    """Pick the more active auto-trade strategy profile for the current market tape."""
+    trend_rsi_params = {
+        "ema_period": 50,
+        "rsi_period": 14,
+        "rsi_buy": 48,
+        "rsi_sell": 67,
+        "volume_factor": 1.0,
+        "profit_target_pct": 0.02,
+        "max_hold_candles": 12,
+    }
+    adaptive_params = {
+        "volume_factor": 1.0,
+        "rsi_buy_low_vol": 42.0,
+        "rsi_buy_normal": 47.0,
+        "max_hold_candles": 16,
+        "min_profit_for_macd_exit": 0.003,
+    }
+    rsi_params = {"period": 14, "oversold": 38, "overbought": 68}
+
+    if len(ohlcv) < 20:
+        return "trend_rsi", dict(trend_rsi_params)
+
+    closes = np.array([c[4] for c in ohlcv], dtype=float)
+    if len(closes) < 2:
+        return "trend_rsi", dict(trend_rsi_params)
+
+    previous = np.where(closes[:-1] == 0, 1.0, closes[:-1])
+    returns = np.abs(np.diff(closes) / previous)
+    volatility = float(np.std(returns)) * 100 if len(returns) else 0.0
+
+    ema20 = float(np.mean(closes[-20:])) if len(closes) >= 20 else float(np.mean(closes))
+    ema50 = float(np.mean(closes[-50:])) if len(closes) >= 50 else float(np.mean(closes))
+    trend_strength = ((ema20 - ema50) / ema50 * 100) if ema50 else 0.0
+
+    if volatility >= 5.0:
+        return "rsi", dict(rsi_params)
+    if volatility < 1.2 and abs(trend_strength) < 0.35:
+        return "adaptive", dict(adaptive_params)
+    return "trend_rsi", dict(trend_rsi_params)
+
+
 def _score_pair(ohlcv: list) -> float:
     """
     Score a pair 0-100 for how attractive it is to trade right now.
@@ -121,21 +163,9 @@ async def scan_best_opportunity(exclude_symbol: Optional[str] = None) -> tuple:
             ohlcv = await get_ohlcv(exchange, symbol, "15m", 50)
             base_score = _score_pair(ohlcv)
 
-            # TrendRSI is the default — it uses trend + RSI + volume confirmation.
-            # Fall back to plain RSI on very high volatility.
-            if len(ohlcv) >= 20:
-                closes = [c[4] for c in ohlcv]
-                rets = [abs(closes[i] - closes[i-1]) / closes[i-1] for i in range(1, len(closes))]
-                vol = float(np.std(rets)) * 100
-                if vol > 5.0:
-                    strategy_name = "rsi"
-                    params = {"period": 14, "oversold": 35, "overbought": 65}
-                else:
-                    strategy_name = "adaptive"
-                    params = {}
-            else:
-                strategy_name = "trend_rsi"
-                params = {}
+            # Auto-trade now leans into a more active profile:
+            # Trend RSI for most markets, RSI for violent swings, Adaptive only in calm tape.
+            strategy_name, params = pick_auto_strategy_for_ohlcv(ohlcv)
 
             strategy_cls = STRATEGY_MAP.get(strategy_name, AdaptiveStrategy)
             strategy = strategy_cls(params)

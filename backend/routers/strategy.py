@@ -6,7 +6,7 @@ import asyncio
 import numpy as np
 from fastapi import APIRouter
 
-from agents.orchestrator import STRATEGY_MAP, _score_pair, orchestrator
+from agents.orchestrator import STRATEGY_MAP, _score_pair, orchestrator, pick_auto_strategy_for_ohlcv
 from exchange.client import create_exchange, get_ohlcv, get_ticker
 
 router = APIRouter(prefix="/api/strategy", tags=["strategy"])
@@ -99,15 +99,8 @@ def _normalize_action(signal_value: str, has_position: bool) -> str:
 
 
 def _pick_strategy_for_pair(ohlcv: list) -> tuple:
-    """Mirror the auto-trade selector so the Strategy tab explains the same choices bots use."""
-    if len(ohlcv) >= 20:
-        closes = [c[4] for c in ohlcv]
-        rets = [abs(closes[i] - closes[i - 1]) / closes[i - 1] for i in range(1, len(closes)) if closes[i - 1]]
-        vol = float(np.std(rets)) * 100 if rets else 0.0
-        if vol > 5.0:
-            return "rsi", {"period": 14, "oversold": 35, "overbought": 65}
-        return "adaptive", {}
-    return "trend_rsi", {}
+    """Mirror the shared auto-trade selector so the Strategy tab explains the same choices bots use."""
+    return pick_auto_strategy_for_ohlcv(ohlcv)
 
 
 def _reasoning_from_strategy_result(result, has_position: bool) -> dict:
