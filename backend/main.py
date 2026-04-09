@@ -40,11 +40,11 @@ app.add_middleware(
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    """Enforce JWT auth on all routes except public paths and WebSocket.
+    """Enforce JWT auth on all routes except public paths, WebSocket, and CORS preflight.
     Must return JSONResponse on failure — raising HTTPException inside
     BaseHTTPMiddleware causes a 500 crash on Starlette."""
     path = request.url.path
-    if path.startswith("/ws") or path in _PUBLIC_PATHS:
+    if request.method == "OPTIONS" or path.startswith("/ws") or path in _PUBLIC_PATHS:
         return await call_next(request)
 
     auth_header = request.headers.get("Authorization", "")

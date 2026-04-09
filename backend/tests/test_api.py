@@ -41,6 +41,21 @@ async def test_auth_flow_allows_configured_owner_email(client):
     assert login.json()["token"]
 
 
+@pytest.mark.asyncio
+async def test_cors_preflight_is_allowed_for_protected_routes(client):
+    r = await client.options(
+        "/api/settings/paper-wallet",
+        headers={
+            "Authorization": "",
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+    assert r.status_code == 200
+    assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
 # ── Mode toggle ───────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
