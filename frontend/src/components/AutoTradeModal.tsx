@@ -103,17 +103,20 @@ export function AutoTradeModal({ available, onClose, onDeployed }: Props) {
 
     try {
       const marketsPromise = Promise.resolve(getMarkets(quoteCurrency))
-        .then(d => {
-          setScanSymbols(Array.isArray(d?.symbols) ? d.symbols : []);
+        .then(data => {
+          const symbols = Array.isArray(data?.symbols) ? data.symbols : [];
+          setScanSymbols(symbols);
+          return symbols;
         })
         .catch(() => {
           setScanSymbols([]);
+          return [] as string[];
         });
 
-      const analysis = await analyzeMarket(10, quoteCurrency);
-      await marketsPromise;
+      const analysisPromise = analyzeMarket(0, quoteCurrency);
+      const [symbols, analysis] = await Promise.all([marketsPromise, analysisPromise]);
       setPairs(analysis.pairs);
-      setTotalMarkets(Number(analysis.total_markets ?? analysis.pairs.length ?? 0));
+      setTotalMarkets(Number(analysis.total_markets ?? analysis.pairs.length ?? symbols.length ?? 0));
 
       const r = await deployPortfolio({
         budget,
@@ -209,34 +212,31 @@ export function AutoTradeModal({ available, onClose, onDeployed }: Props) {
                     <div className="text-xs font-semibold text-gray-300 mb-2">
                       Markets in this scan ({scanSymbols.length})
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      {scanSymbols.slice(0, 12).map(symbol => (
-                        <span
-                          key={symbol}
-                          className="text-[11px] px-2.5 py-1 rounded-full bg-gray-800/80 text-blue-200 border border-gray-600 font-mono"
-                        >
-                          {symbol}
-                        </span>
-                      ))}
-                      {scanSymbols.length > 12 && (
-                        <span className="text-[11px] px-2.5 py-1 rounded-full bg-gray-800/80 text-gray-300 border border-gray-600">
-                          +{scanSymbols.length - 12} more
-                        </span>
-                      )}
+                    <div className="max-h-40 overflow-y-auto pr-1">
+                      <div className="flex flex-wrap gap-2">
+                        {scanSymbols.map(symbol => (
+                          <span
+                            key={symbol}
+                            className="text-[11px] px-2.5 py-1 rounded-full bg-gray-800/80 text-blue-200 border border-gray-600 font-mono"
+                          >
+                            {symbol}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="w-full bg-gray-900/50 border border-gray-700 rounded-lg p-3 text-left max-h-72 overflow-y-auto">
+              <div className="w-full bg-gray-900/50 border border-gray-700 rounded-lg p-3 text-left max-h-96 overflow-y-auto">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-semibold text-gray-300">Markets reviewed</span>
                   <span className="text-[11px] text-gray-500">
-                    {totalMarkets > pairs.length ? `Top ${pairs.length} of ${totalMarkets}` : 'Top candidates first'}
+                    {totalMarkets > pairs.length ? `Showing ${pairs.length} of ${totalMarkets}` : `Showing all ${pairs.length}`}
                   </span>
                 </div>
                 <div className="space-y-2">
-                  {pairs.slice(0, 5).map(pair => (
+                  {pairs.map(pair => (
                     <div key={pair.symbol} className="rounded-lg border border-gray-700 bg-gray-800/70 p-3">
                       <div className="flex items-start justify-between gap-2">
                         <div>

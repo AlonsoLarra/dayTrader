@@ -92,7 +92,7 @@ describe('AutoTradeModal', () => {
     render(<AutoTradeModal {...defaultProps} />);
     fireEvent.click(screen.getByText(/Start Trading/i));
 
-    await waitFor(() => expect(analyze).toHaveBeenCalledWith(10, 'MXN'));
+    await waitFor(() => expect(analyze).toHaveBeenCalledWith(0, 'MXN'));
     await waitFor(() => expect(deploy).toHaveBeenCalledWith({
       budget: 100,
       max_agents: 3,
@@ -137,7 +137,7 @@ describe('AutoTradeModal', () => {
     fireEvent.change(screen.getByLabelText(/Quote currency/i), { target: { value: 'BTC' } });
     fireEvent.click(screen.getByText(/Start Trading/i));
 
-    await waitFor(() => expect(analyze).toHaveBeenCalledWith(10, 'BTC'));
+    await waitFor(() => expect(analyze).toHaveBeenCalledWith(0, 'BTC'));
     await waitFor(() => expect(deploy).toHaveBeenCalledWith(expect.objectContaining({
       quote_currency: 'BTC',
     })));
@@ -175,7 +175,7 @@ describe('AutoTradeModal', () => {
     fireEvent.change(screen.getByLabelText(/Quote currency/i), { target: { value: 'USD' } });
     fireEvent.click(screen.getByText(/Start Trading/i));
 
-    await waitFor(() => expect(analyze).toHaveBeenCalledWith(10, 'USD'));
+    await waitFor(() => expect(analyze).toHaveBeenCalledWith(0, 'USD'));
     await waitFor(() => expect(deploy).toHaveBeenCalledWith(expect.objectContaining({
       quote_currency: 'USD',
     })));
@@ -195,15 +195,16 @@ describe('AutoTradeModal', () => {
     const markets = apiMock.getMarkets as ReturnType<typeof vi.fn>;
 
     markets.mockResolvedValue({
-      symbols: ['AVAX/MXN', 'BTC/MXN', 'ETH/MXN', 'USDT/MXN'],
+      symbols: ['AVAX/MXN', 'BTC/MXN', 'ETH/MXN', 'USDT/MXN', 'SOL/MXN', 'ADA/MXN'],
     });
 
-    let finishAnalysis: ((value: { pairs: Array<Record<string, unknown>> }) => void) | undefined;
+    let finishAnalysis: ((value: { pairs: Array<Record<string, unknown>>; total_markets?: number }) => void) | undefined;
     analyze.mockReturnValue(new Promise(resolve => {
       finishAnalysis = resolve;
     }));
 
     const analyzedPairs = {
+      total_markets: 6,
       pairs: [
         {
           symbol: 'AVAX/MXN',
@@ -221,6 +222,38 @@ describe('AutoTradeModal', () => {
           action: 'WAITING',
           confidence: 0.21,
         },
+        {
+          symbol: 'ETH/MXN',
+          score: 58,
+          strategy: 'adaptive',
+          reason: 'Watching for stronger momentum',
+          action: 'WAITING',
+          confidence: 0.18,
+        },
+        {
+          symbol: 'USDT/MXN',
+          score: 54,
+          strategy: 'trend_rsi',
+          reason: 'Flat structure, low urgency',
+          action: 'WAITING',
+          confidence: 0.14,
+        },
+        {
+          symbol: 'SOL/MXN',
+          score: 53,
+          strategy: 'trend_rsi',
+          reason: 'Healthy pullback but needs confirmation',
+          action: 'WAITING',
+          confidence: 0.16,
+        },
+        {
+          symbol: 'ADA/MXN',
+          score: 49,
+          strategy: 'rsi',
+          reason: 'Still below trigger',
+          action: 'WAITING',
+          confidence: 0.11,
+        },
       ],
     };
 
@@ -236,11 +269,17 @@ describe('AutoTradeModal', () => {
     expect(screen.getByText('AVAX/MXN')).toBeInTheDocument();
     expect(screen.getByText('BTC/MXN')).toBeInTheDocument();
     expect(screen.getByText('ETH/MXN')).toBeInTheDocument();
+    expect(screen.getByText('USDT/MXN')).toBeInTheDocument();
+    expect(screen.getByText('SOL/MXN')).toBeInTheDocument();
+    expect(screen.getByText('ADA/MXN')).toBeInTheDocument();
 
     finishAnalysis?.(analyzedPairs);
 
     await waitFor(() => expect(screen.getByText(/Markets reviewed/i)).toBeInTheDocument());
+    expect(screen.getByText(/Showing all 6/i)).toBeInTheDocument();
     expect(screen.getByText(/Buy signal active — uptrend \+ RSI pullback \+ volume support/i)).toBeInTheDocument();
+    expect(screen.getByText('SOL/MXN')).toBeInTheDocument();
+    expect(screen.getByText('ADA/MXN')).toBeInTheDocument();
     expect(screen.getAllByText(/WAITING/i).length).toBeGreaterThan(0);
 
     finishDeploy?.({

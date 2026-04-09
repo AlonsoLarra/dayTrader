@@ -214,16 +214,21 @@ async def _analyze_pair(exchange, symbol: str) -> dict:
 
 @router.post("/analyze")
 async def analyze_market(max_pairs: int = 10, quote_currency: str = "MXN"):
-    """Analyze all available pairs for the selected quote currency and return scores without deploying."""
+    """Analyze all available pairs for the selected quote currency and return scores without deploying.
+
+    Pass `max_pairs <= 0` to return the full reviewed market list.
+    """
     normalized_quote = (quote_currency or "MXN").upper()
     exchange = create_exchange()
     symbols = await get_available_symbols(normalized_quote)
     results = await asyncio.gather(*[_analyze_pair(exchange, s) for s in symbols])
     sorted_results = sorted(results, key=lambda x: x.get("rank_score", x["score"]), reverse=True)
+    limit = int(max_pairs or 0)
+    selected_pairs = sorted_results if limit <= 0 else sorted_results[:limit]
     return {
         "quote_currency": normalized_quote,
         "total_markets": len(sorted_results),
-        "pairs": sorted_results[:max_pairs],
+        "pairs": selected_pairs,
     }
 
 

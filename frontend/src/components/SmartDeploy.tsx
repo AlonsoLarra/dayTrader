@@ -46,16 +46,19 @@ export function SmartDeploy({ walletBalance, onDeployed }: Props) {
 
     try {
       const marketsPromise = Promise.resolve(getMarkets())
-        .then(d => {
-          setScanSymbols(Array.isArray(d?.symbols) ? d.symbols : []);
+        .then(data => {
+          const symbols = Array.isArray(data?.symbols) ? data.symbols : [];
+          setScanSymbols(symbols);
+          return symbols;
         })
         .catch(() => {
           setScanSymbols([]);
+          return [] as string[];
         });
 
-      // Step 1: Analyze
-      const analysis = await analyzeMarket(10);
+      const analysisPromise = analyzeMarket(0);
       await marketsPromise;
+      const analysis = await analysisPromise;
       setPairs(analysis.pairs);
 
       // Step 2: Deploy top picks automatically
@@ -130,24 +133,21 @@ export function SmartDeploy({ walletBalance, onDeployed }: Props) {
               {scanSymbols.length > 0 && (
                 <div>
                   <div className="text-[11px] text-gray-300 font-semibold mb-1.5">Markets in this scan ({scanSymbols.length})</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {scanSymbols.slice(0, 10).map(symbol => (
-                      <span key={symbol} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800/80 text-blue-200 border border-gray-600 font-mono">
-                        {symbol}
-                      </span>
-                    ))}
-                    {scanSymbols.length > 10 && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800/80 text-gray-300 border border-gray-600">
-                        +{scanSymbols.length - 10} more
-                      </span>
-                    )}
+                  <div className="max-h-32 overflow-y-auto pr-1">
+                    <div className="flex flex-wrap gap-1.5">
+                      {scanSymbols.map(symbol => (
+                        <span key={symbol} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800/80 text-blue-200 border border-gray-600 font-mono">
+                          {symbol}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
             </div>
           ) : (
-            <div className="rounded-lg border border-gray-700 bg-gray-900/50 p-3 space-y-2 max-h-64 overflow-y-auto">
-              {pairs.slice(0, 4).map(pair => (
+            <div className="rounded-lg border border-gray-700 bg-gray-900/50 p-3 space-y-2 max-h-80 overflow-y-auto">
+              {pairs.map(pair => (
                 <div key={pair.symbol} className="rounded-md border border-gray-700 bg-gray-800/70 p-2">
                   <div className="flex items-start justify-between gap-2">
                     <div>
