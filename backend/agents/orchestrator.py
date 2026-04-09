@@ -5,6 +5,7 @@ from typing import Optional
 
 import numpy as np
 from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from database import AsyncSessionLocal
 from models import AgentState, PaperWallet, Trade
@@ -491,9 +492,14 @@ class AgentOrchestrator:
     async def reload_from_db(self) -> None:
         """On startup, recreate agent instances in memory for all non-killed agents."""
         async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(AgentState).where(AgentState.status != "killed")
-            )
+            try:
+                result = await session.execute(
+                    select(AgentState).where(AgentState.status != "killed")
+                )
+            except (ProgrammingError, OperationalError):
+                # Fresh production databases may still be initializing.
+                return
+
             states = result.scalars().all()
             for state in states:
                 strategy_cls = STRATEGY_MAP.get(state.strategy)

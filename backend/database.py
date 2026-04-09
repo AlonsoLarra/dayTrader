@@ -27,15 +27,22 @@ class Base(DeclarativeBase):
 
 async def init_db():
     import models  # noqa: F401 - ensure models are registered
+
+    # Create the base tables first and commit that work before running any
+    # idempotent ALTER TABLE migrations. PostgreSQL marks a transaction as
+    # failed after a single bad ALTER, which would otherwise roll back the
+    # newly created tables on first boot.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Safe migrations: add new columns if they don't exist yet
+
+    async with engine.begin() as conn:
         await conn.run_sync(_migrate_schema)
 
 
 def _migrate_schema(conn):
     """Add new columns to existing tables without dropping data.
-    Uses try/except so this is safe for both SQLite and PostgreSQL."""
+    Each statement runs in a savepoint so PostgreSQL failures do not poison
+    the entire transaction during startup."""
     migrations = [
         "ALTER TABLE agent_states ADD COLUMN losses_today INTEGER DEFAULT 0",
         "ALTER TABLE agent_states ADD COLUMN realized_pnl_today REAL DEFAULT 0.0",
@@ -64,36 +71,26 @@ def _migrate_schema(conn):
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
     ]
-    for sql in migrations:
+    def _run_safe(sql: str) -> None:
         try:
-            conn.execute(text(sql))
+            with conn.begin_nested():
+                conn.execute(text(sql))
         except Exception:
-            pass  # column/table already exists — safe to ignore
-    # Backfill symbol for rows that predate this column
-    try:
-        conn.execute(text("UPDATE agent_states SET symbol = 'BTC/MXN' WHERE symbol IS NULL"))
-    except Exception:
-        pass
-    try:
-        conn.execute(text("UPDATE agent_states SET quote_currency = COALESCE(quote_currency, substr(symbol, instr(symbol, '/') + 1)) WHERE symbol IS NOT NULL"))
-    except Exception:
-        pass
-    try:
-        conn.execute(text("UPDATE trades SET quote_currency = COALESCE(quote_currency, substr(symbol, instr(symbol, '/') + 1)) WHERE symbol IS NOT NULL"))
-    except Exception:
-        pass
-    try:
-        conn.execute(text("UPDATE paper_wallet SET usd_balance = COALESCE(NULLIF(usd_balance, 0), 100.0)"))
-        conn.execute(text("UPDATE paper_wallet SET usdt_balance = COALESCE(NULLIF(usdt_balance, 0), 100.0)"))
-    except Exception:
-        pass
-    try:
-        conn.execute(text(
-            "UPDATE agent_states SET min_rotation_score_delta = 1.0 "
-            "WHERE rotation_enabled = 1 AND (min_rotation_score_delta IS NULL OR min_rotation_score_delta = 8.0)"
-        ))
-    except Exception:
-        pass
+            pass  # already applied / not applicable for this database
+
+    for sql in migrations:
+        _run_safe(sql)
+
+    # Backfill data for rows that predate these columns
+    _run_safe("UPDATE agent_states SET symbol = 'BTC/MXN' WHERE symbol IS NULL")
+    _run_safe("UPDATE agent_states SET quote_currency = COALESCE(quote_currency, substr(symbol, instr(symbol, '/') + 1)) WHERE symbol IS NOT NULL")
+    _run_safe("UPDATE trades SET quote_currency = COALESCE(quote_currency, substr(symbol, instr(symbol, '/') + 1)) WHERE symbol IS NOT NULL")
+    _run_safe("UPDATE paper_wallet SET usd_balance = COALESCE(NULLIF(usd_balance, 0), 100.0)")
+    _run_safe("UPDATE paper_wallet SET usdt_balance = COALESCE(NULLIF(usdt_balance, 0), 100.0)")
+    _run_safe(
+        "UPDATE agent_states SET min_rotation_score_delta = 1.0 "
+        "WHERE rotation_enabled = 1 AND (min_rotation_score_delta IS NULL OR min_rotation_score_delta = 8.0)"
+    )
 
 
 async def get_db():
