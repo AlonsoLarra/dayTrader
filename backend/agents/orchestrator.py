@@ -532,6 +532,7 @@ class AgentOrchestrator:
                         "amount": state.open_position_amount,
                         "symbol": state.symbol,
                         "total_cost": total_cost,
+                        "entry_candle_ts": None,  # unknown after restart; candles_held will be 0 until next entry
                     }
                     if hasattr(exchange, "restore_position"):
                         exchange.restore_position(

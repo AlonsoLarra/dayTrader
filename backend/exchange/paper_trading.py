@@ -159,38 +159,6 @@ class PaperExchange:
         self.orders.append(order)
         return order
 
-    """Paper trading simulator using real market prices from Bitso public API."""
-
-    def __init__(self, symbol: str = "BTC/MXN", initial_balance: float = 10000.0):
-        self._bitso = ccxt.bitso()
-        parts = symbol.split("/")
-        self._base = parts[0]   # e.g. BTC
-        self._quote = parts[1]  # e.g. MXN
-        self.balance: dict[str, float] = {
-            self._quote: initial_balance,
-            self._base: 0.0,
-        }
-        self.positions: dict[str, dict] = {}
-        self.orders: list[dict] = []
-        self.pnl: float = 0.0
-
-    def fetch_balance(self) -> dict:
-        free = dict(self.balance)
-        return {"free": free, "total": free, "used": {}}
-
-    def fetch_ticker(self, symbol: str) -> dict:
-        try:
-            return self._bitso.fetch_ticker(symbol)
-        except Exception:
-            # Fallback: approximate BTC/MXN price
-            return {"last": 1_800_000.0, "symbol": symbol, "timestamp": int(time.time() * 1000)}
-
-    def fetch_ohlcv(self, symbol: str, timeframe: str = "1h", limit: int = 100) -> list:
-        try:
-            return self._bitso.fetch_ohlcv(symbol, timeframe, limit=limit)
-        except Exception:
-            return []
-
     def restore_position(self, symbol: str, amount: float, entry_price: float, total_cost: float = None) -> None:
         """Rehydrate a persisted paper position so it can be sold after restart."""
         base_currency, quote_currency = symbol.split("/")
