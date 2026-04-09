@@ -328,7 +328,8 @@ class TradingAgent:
                 )
 
                 can_trade, reason = self.guardrails.can_trade(state)
-                if not can_trade:
+                if not can_trade and not self.open_position:
+                    # No open position and can't open new ones — nothing to do.
                     await self._log(session, "info", f"Cannot trade: {reason}")
                     return
 
@@ -344,9 +345,17 @@ class TradingAgent:
 
                     # Pass entry context to strategies that support it (TrendRSI)
                     entry_price = self.open_position["price"] if self.open_position else None
-                    candles_held = self.open_position.get("candles_held", 0) if self.open_position else 0
+                    candles_held = 0
                     if self.open_position:
-                        self.open_position["candles_held"] = candles_held + 1
+                        # Count actual candles elapsed since entry, not ticks.
+                        # Each OHLCV row is a 15m candle; use timestamps to compute real count.
+                        entry_ts = self.open_position.get("entry_candle_ts")
+                        if entry_ts and ohlcv:
+                            latest_ts = ohlcv[-1][0]
+                            candle_interval_ms = 15 * 60 * 1000  # 15 minutes
+                            candles_held = max(0, int((latest_ts - entry_ts) / candle_interval_ms))
+                        else:
+                            candles_held = 0
 
                     import inspect
                     sig = inspect.signature(self.strategy.analyze)
@@ -379,8 +388,11 @@ class TradingAgent:
                     return
 
                 # Long-only spot trading:
-                # BUY only if we have no open position
+                # BUY only if we have no open position and guardrails allow it
                 # SELL only if we have an open long position to close
+                if result.signal == Signal.BUY and not can_trade:
+                    await self._log(session, "info", f"BUY signal blocked: {reason}")
+                    return
                 if result.signal == Signal.BUY and self.open_position:
                     await self._log(session, "info", "Already holding a long position, skipping BUY")
                     return
@@ -489,12 +501,16 @@ class TradingAgent:
                             open_position_price=fill_price,
                             open_position_amount=amount,
                         )
+                        # Record the candle timestamp at entry so candles_held is
+                        # counted in real 15m candles, not 30s ticks.
+                        entry_candle_ts = ohlcv[-1][0] if ohlcv else None
                         self.open_position = {
                             "side": "buy",
                             "price": fill_price,
                             "amount": amount,
                             "symbol": self.symbol,
                             "total_cost": cost,
+                            "entry_candle_ts": entry_candle_ts,
                         }
 
                     if self._broadcaster:

@@ -1,8 +1,8 @@
 """
 TrendRSI — composite strategy that combines:
   1. Trend filter (50-period EMA) — only buy in uptrends
-  2. RSI mean-reversion with looser thresholds (buy<45, sell>65)
-  3. Volume confirmation (current bar volume > 1.1× 20-bar average)
+  2. RSI mean-reversion with looser thresholds (buy<50, sell>65)
+  3. Volume confirmation (current bar volume > 0.9× 20-bar average)
   4. Profit target (2.5% gain triggers sell)
   5. Time-based exit (>16 candles = ~4h with no profit → free capital)
 
@@ -23,9 +23,9 @@ class TrendRSIStrategy(BaseStrategy):
         super().__init__(params)
         self.ema_period: int = int(self.params.get("ema_period", 50))
         self.rsi_period: int = int(self.params.get("rsi_period", 14))
-        self.rsi_buy: float = float(self.params.get("rsi_buy", 45))
+        self.rsi_buy: float = float(self.params.get("rsi_buy", 50))
         self.rsi_sell: float = float(self.params.get("rsi_sell", 65))
-        self.volume_factor: float = float(self.params.get("volume_factor", 1.1))
+        self.volume_factor: float = float(self.params.get("volume_factor", 0.9))
         self.profit_target_pct: float = float(self.params.get("profit_target_pct", 0.025))
         self.max_hold_candles: int = int(self.params.get("max_hold_candles", 16))
 

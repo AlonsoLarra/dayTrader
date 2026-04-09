@@ -10,9 +10,9 @@ Combines five indicator systems:
   6. Volume confirmation (current bar > 1.1× 20-bar average)
 
 Volatility regime (based on ATR% percentile over 50 bars):
-  Low  (<30th pctl): RSI buy<40/sell>60, trailing stop = 1.0×ATR
-  Normal (30-70th):  RSI buy<45/sell>65, trailing stop = 1.5×ATR
-  High  (>70th pctl): RSI buy<35/sell>75, trailing stop = 2.5×ATR
+  Low  (<30th pctl): RSI buy<47/sell>60, trailing stop = 1.0×ATR
+  Normal (30-70th):  RSI buy<50/sell>65, trailing stop = 1.5×ATR
+  High  (>70th pctl): RSI buy<40/sell>75, trailing stop = 2.5×ATR
 
 Why this beats TrendRSI:
   - Adaptive thresholds avoid whipsaws in high vol and missed entries in low vol
@@ -40,7 +40,7 @@ class AdaptiveStrategy(BaseStrategy):
         self.bb_period: int = int(self.params.get("bb_period", 20))
         self.bb_std: float = float(self.params.get("bb_std", 2.0))
         self.atr_period: int = int(self.params.get("atr_period", 14))
-        self.volume_factor: float = float(self.params.get("volume_factor", 1.1))
+        self.volume_factor: float = float(self.params.get("volume_factor", 0.9))
         self.max_hold_candles: int = int(self.params.get("max_hold_candles", 20))
         self.min_profit_for_macd_exit: float = float(self.params.get("min_profit_for_macd_exit", 0.005))
 
@@ -49,9 +49,9 @@ class AdaptiveStrategy(BaseStrategy):
         self.high_vol_percentile: float = float(self.params.get("high_vol_percentile", 70.0))
 
         # RSI thresholds per regime
-        self.rsi_buy_low_vol: float = float(self.params.get("rsi_buy_low_vol", 40.0))
-        self.rsi_buy_normal: float = float(self.params.get("rsi_buy_normal", 45.0))
-        self.rsi_buy_high_vol: float = float(self.params.get("rsi_buy_high_vol", 35.0))
+        self.rsi_buy_low_vol: float = float(self.params.get("rsi_buy_low_vol", 47.0))
+        self.rsi_buy_normal: float = float(self.params.get("rsi_buy_normal", 50.0))
+        self.rsi_buy_high_vol: float = float(self.params.get("rsi_buy_high_vol", 40.0))
         self.rsi_sell_low_vol: float = float(self.params.get("rsi_sell_low_vol", 60.0))
         self.rsi_sell_normal: float = float(self.params.get("rsi_sell_normal", 65.0))
         self.rsi_sell_high_vol: float = float(self.params.get("rsi_sell_high_vol", 75.0))
@@ -337,24 +337,23 @@ class AdaptiveStrategy(BaseStrategy):
                 indicators=indicators,
             )
 
-        # MACD confirmation: histogram positive or bullish crossover in last 2 bars
+        # MACD used as confidence modifier, not a hard gate.
+        # Positive MACD = full confidence; negative = reduced but still tradeable.
         macd_ok = macd_hist_positive or macd_bullish_cross
-        if not macd_ok:
-            return StrategyResult(
-                signal=Signal.HOLD,
-                confidence=0.0,
-                reasoning=f"RSI {rsi:.1f} + volume OK but MACD not confirming (histogram {histogram[-1]:.2f})",
-                indicators=indicators,
-            )
 
-        # All conditions met — BUY
+        # All core conditions met (uptrend + RSI + volume) — BUY
         base_confidence = (rsi_buy_threshold - rsi) / rsi_buy_threshold
-        macd_factor = 1.0 if macd_hist_positive else 0.7
+        macd_factor = 1.0 if macd_hist_positive else (0.85 if macd_bullish_cross else 0.6)
         volume_ratio = min(current_vol / avg_vol, 2.0) / 2.0 if avg_vol else 0.5
         squeeze_bonus = 0.15 if squeeze_releasing else 0.0
         confidence = min(base_confidence * macd_factor * (0.5 + volume_ratio) + squeeze_bonus, 1.0)
 
-        parts = [f"uptrend", f"RSI {rsi:.1f}<{rsi_buy_threshold}", f"MACD {'positive' if macd_hist_positive else 'crossing up'}", f"vol {current_vol/avg_vol:.1f}x"]
+        parts = [f"uptrend", f"RSI {rsi:.1f}<{rsi_buy_threshold}"]
+        if macd_ok:
+            parts.append(f"MACD {'positive' if macd_hist_positive else 'crossing up'}")
+        else:
+            parts.append(f"MACD weak ({histogram[-1]:.2f})")
+        parts.append(f"vol {current_vol/avg_vol:.1f}x")
         if squeeze_releasing:
             parts.append("BB squeeze releasing")
 
