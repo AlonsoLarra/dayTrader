@@ -32,9 +32,15 @@ api.interceptors.response.use(
 
 export const getAgents = () => api.get<Agent[]>('/agents').then(r => r.data);
 export const getAgent = (id: string) => api.get<Agent>(`/agents/${id}`).then(r => r.data);
-export const createAgent = (data: { strategy: string; params: Record<string, number>; budget: number; symbol: string }) =>
-  api.post<{ agent_id: string }>('/agents', data).then(r => r.data);
-export const getMarkets = () => api.get<{ symbols: string[] }>('/agents/markets').then(r => r.data);
+export const createAgent = (data: {
+  strategy: string;
+  params: Record<string, number>;
+  budget: number;
+  symbol: string;
+  quote_currency?: string;
+}) => api.post<{ agent_id: string }>('/agents', data).then(r => r.data);
+export const getMarkets = (quote = 'MXN') =>
+  api.get<{ symbols: string[] }>('/agents/markets', { params: { quote } }).then(r => r.data);
 export const startAgent = (id: string) => api.post(`/agents/${id}/start`).then(r => r.data);
 export const stopAgent = (id: string) => api.post(`/agents/${id}/stop`).then(r => r.data);
 export const killAgent = (id: string) => api.post(`/agents/${id}/kill`).then(r => r.data);
@@ -88,13 +94,16 @@ export const runBacktest = (data: {
   initial_capital: number;
 }) => api.post<BacktestResult>('/backtest', data).then(r => r.data);
 
-export const analyzeMarket = (max_pairs = 10) =>
-  api.post<{ pairs: PairAnalysis[] }>('/portfolio/analyze', null, { params: { max_pairs } }).then(r => r.data);
+export const analyzeMarket = (max_pairs = 10, quote_currency = 'MXN') =>
+  api.post<{ pairs: PairAnalysis[]; quote_currency?: string; total_markets?: number }>('/portfolio/analyze', null, {
+    params: { max_pairs, quote_currency },
+  }).then(r => r.data);
 
 export const deployPortfolio = (data: {
   budget: number;
   max_agents: number;
   min_score: number;
+  quote_currency?: string;
   rotation_enabled?: boolean;
   rotation_interval_minutes?: number;
   aggressive_rotation?: boolean;
@@ -107,18 +116,26 @@ export const getPositions = () =>
 export const forceSell = (agentId: string) =>
   api.post<{ symbol: string; amount: number; price: number; pnl: number; proceeds: number }>(`/agents/${agentId}/force-sell`).then(r => r.data);
 
-export interface PaperWalletData {
+export interface PaperWalletSnapshot {
   starting_balance: number;
   deployed: number;
   in_market: number;
   available: number;
 }
 
-export const getPaperWallet = () =>
-  api.get<PaperWalletData>('/settings/paper-wallet').then(r => r.data);
+export interface PaperWalletData extends PaperWalletSnapshot {
+  currency?: string;
+  balances?: Record<string, PaperWalletSnapshot>;
+}
 
-export const setPaperWallet = (starting_balance: number) =>
-  api.post<{ starting_balance: number }>('/settings/paper-wallet', { starting_balance }).then(r => r.data);
+export const getPaperWallet = (currency = 'MXN') =>
+  api.get<PaperWalletData>('/settings/paper-wallet', { params: { currency } }).then(r => r.data);
+
+export const setPaperWallet = (starting_balance: number, currency = 'MXN') =>
+  api.post<{ starting_balance: number; currency?: string }>('/settings/paper-wallet', {
+    starting_balance,
+    currency,
+  }).then(r => r.data);
 
 export interface BotReasoning {
   agent_id: string;

@@ -10,6 +10,22 @@ interface Props {
   lastWsMessage: WsMessage | null;
 }
 
+function getQuoteCurrency(symbol: string, explicit?: string) {
+  return (explicit || (symbol.includes('/') ? symbol.split('/')[1] : 'MXN') || 'MXN').toUpperCase();
+}
+
+function formatSummaryAmount(value: number, quoteCurrency?: string) {
+  const normalizedQuote = quoteCurrency?.toUpperCase();
+  const digits = normalizedQuote === 'BTC' ? 6 : 2;
+  const formatted = Number(value || 0).toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+
+  if (!normalizedQuote) return formatted;
+  return normalizedQuote === 'MXN' ? `$${formatted}` : `${formatted} ${normalizedQuote}`;
+}
+
 export function Dashboard({ lastWsMessage }: Props) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -36,6 +52,12 @@ export function Dashboard({ lastWsMessage }: Props) {
   }, [lastWsMessage, refresh]);
 
   const runningAgents = agents.filter(a => a.status === 'running').length;
+  const activeQuotes = Array.from(new Set(
+    agents
+      .filter(a => a.status !== 'killed')
+      .map(a => getQuoteCurrency(a.symbol, a.quote_currency))
+  ));
+  const summaryQuote = activeQuotes.length <= 1 ? (activeQuotes[0] ?? 'MXN') : undefined;
 
   const pnl = summary?.total_pnl ?? 0;
   const pnlPct = summary?.total_allocated
@@ -52,23 +74,25 @@ export function Dashboard({ lastWsMessage }: Props) {
           <div>
             <div className="text-xs text-gray-500 mb-1">Realized P&amp;L</div>
             <div className={`text-2xl font-bold tabular-nums ${pnlPositive ? 'text-green-400' : 'text-red-400'}`}>
-              {pnlPositive ? '+' : ''}${pnl.toFixed(2)}
+              {pnlPositive ? '+' : '-'}{formatSummaryAmount(Math.abs(pnl), summaryQuote)}
             </div>
             <div className={`text-xs mt-0.5 ${pnlPositive ? 'text-green-500' : 'text-red-500'}`}>
               {pnlPositive ? '+' : ''}{pnlPct.toFixed(2)}% on capital
             </div>
             {(summary?.total_fees ?? 0) > 0 && (
               <div className="text-xs text-gray-600 mt-0.5">
-                −${(summary?.total_fees ?? 0).toFixed(2)} fees paid
+                −{formatSummaryAmount(summary?.total_fees ?? 0, summaryQuote)} fees paid
               </div>
             )}
           </div>
           <div>
             <div className="text-xs text-gray-500 mb-1">Capital Deployed</div>
             <div className="text-2xl font-bold text-white tabular-nums">
-              ${(summary?.total_allocated ?? 0).toLocaleString('es-MX', { minimumFractionDigits: 0 })}
+              {formatSummaryAmount(summary?.total_allocated ?? 0, summaryQuote)}
             </div>
-            <div className="text-xs text-gray-500 mt-0.5">MXN paper budget</div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              {summaryQuote ? `${summaryQuote} paper budget` : 'Across paper wallets'}
+            </div>
           </div>
           <div>
             <div className="text-xs text-gray-500 mb-1">Win Rate</div>

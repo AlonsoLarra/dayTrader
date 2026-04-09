@@ -42,6 +42,7 @@ const STRATEGIES = [
 
 export function CreateAgentModal({ onClose, onCreate }: Props) {
   const [strategy, setStrategy] = useState('auto');
+  const [quoteCurrency, setQuoteCurrency] = useState<'MXN' | 'BTC' | 'USD' | 'USDT'>('MXN');
   const [symbol, setSymbol] = useState('BTC/MXN');
   const [budget, setBudget] = useState(50);
   const [available, setAvailable] = useState<number | null>(null);
@@ -50,18 +51,36 @@ export function CreateAgentModal({ onClose, onCreate }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getMarkets().then(d => setMarkets(d.symbols)).catch(() => {});
-    getPaperWallet().then(d => {
-      setAvailable(d.available);
-      setBudget(Math.max(1, Math.floor(d.available)));
+    Promise.resolve(getMarkets(quoteCurrency)).then(d => {
+      const nextMarkets = d?.symbols ?? [];
+      setMarkets(nextMarkets);
+      const defaultSymbols: Record<string, string> = {
+        MXN: 'BTC/MXN',
+        BTC: 'ETH/BTC',
+        USD: 'BTC/USD',
+        USDT: 'BTC/USDT',
+      };
+      setSymbol(nextMarkets[0] ?? defaultSymbols[quoteCurrency] ?? 'BTC/MXN');
     }).catch(() => {});
-  }, []);
+
+    Promise.resolve(getPaperWallet(quoteCurrency)).then(d => {
+      const quoteWallet = d?.balances?.[quoteCurrency] ?? d;
+      const nextAvailable = Number(quoteWallet?.available ?? 0);
+      setAvailable(nextAvailable);
+      if (nextAvailable > 0) {
+        const suggestedBudget = quoteCurrency === 'BTC'
+          ? Number(nextAvailable.toFixed(4))
+          : Math.max(1, Math.floor(nextAvailable));
+        setBudget(suggestedBudget);
+      }
+    }).catch(() => {});
+  }, [quoteCurrency]);
 
   const handleCreate = async () => {
     setError(null);
     setLoading(true);
     try {
-      await createAgent({ strategy, params: {}, budget, symbol });
+      await createAgent({ strategy, params: {}, budget, symbol, quote_currency: quoteCurrency });
       onCreate();
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Failed to deploy bot';
@@ -82,15 +101,30 @@ export function CreateAgentModal({ onClose, onCreate }: Props) {
         </div>
 
         <div className="space-y-4">
+          <div>
+            <label className="block text-sm text-gray-300 font-medium mb-1">Quote Currency</label>
+            <select
+              value={quoteCurrency}
+              onChange={e => setQuoteCurrency(e.target.value as 'MXN' | 'BTC' | 'USD' | 'USDT')}
+              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm"
+            >
+              <option value="MXN">MXN markets</option>
+              <option value="BTC">BTC markets</option>
+              <option value="USD">USD markets</option>
+              <option value="USDT">USDT markets</option>
+            </select>
+          </div>
+
           {/* Budget */}
           <div>
             <label className="block text-sm text-gray-300 font-medium mb-1">
-              Budget <span className="text-gray-500 font-normal">(MXN)</span>
+              Budget <span className="text-gray-500 font-normal">({quoteCurrency})</span>
             </label>
             <input
               type="number"
               value={budget}
-              min={1}
+              min={quoteCurrency === 'BTC' ? 0.0001 : 1}
+              step={quoteCurrency === 'BTC' ? 0.0001 : 1}
               max={available ?? undefined}
               onChange={e => setBudget(Number(e.target.value))}
               className={`w-full bg-gray-700 border rounded px-3 py-2 text-white text-sm ${available !== null && budget > available ? 'border-red-500' : 'border-gray-600'}`}
@@ -100,7 +134,7 @@ export function CreateAgentModal({ onClose, onCreate }: Props) {
               <p className="text-gray-500">Paper money — no real funds at risk until you enable live mode.</p>
               {available !== null && (
                 <span className={budget > available ? 'text-red-400' : 'text-gray-500'}>
-                  ${available.toFixed(2)} available
+                  {available.toFixed(quoteCurrency === 'BTC' ? 6 : 2)} {quoteCurrency} available
                 </span>
               )}
             </div>
@@ -115,7 +149,7 @@ export function CreateAgentModal({ onClose, onCreate }: Props) {
               className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm"
             >
               {markets.map(s => (
-                <option key={s} value={s}>{s.replace('/MXN', '')} ({s})</option>
+                <option key={s} value={s}>{s.split('/')[0]} ({s})</option>
               ))}
             </select>
           </div>

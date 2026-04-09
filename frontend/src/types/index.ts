@@ -3,6 +3,7 @@ export interface Agent {
   strategy: string;
   status: 'running' | 'stopped' | 'killed';
   symbol: string;
+  quote_currency?: string;
   budget_allocated: number;
   budget_used: number;
   trades_today: number;
@@ -24,6 +25,7 @@ export interface Trade {
   id: number;
   agent_id: string;
   symbol: string;
+  quote_currency?: string;
   side: 'buy' | 'sell';
   amount: number;
   price: number;
@@ -89,8 +91,16 @@ export interface WsMessage {
 export interface PairAnalysis {
   symbol: string;
   score: number;
+  rank_score?: number;
+  expected_roi_pct?: number;
+  reward_risk_ratio?: number;
+  trend_strength_pct?: number;
   strategy: string;
   reason: string;
+  action?: string;
+  signal?: 'buy' | 'sell' | 'hold';
+  confidence?: number;
+  eligible?: boolean;
   rsi?: number;
   volatility?: number;
   ma_bullish?: boolean;
@@ -98,6 +108,7 @@ export interface PairAnalysis {
 
 export interface DeployResult {
   total_budget: number;
+  quote_currency?: string;
   pairs: { symbol: string; score: number; strategy: string; reason: string; budget_allocated: number }[];
   agent_ids: string[];
 }

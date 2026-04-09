@@ -297,3 +297,41 @@ async def test_scan_best_opportunity_prefers_buy_signal_over_hold_rank(monkeypat
     assert symbol == "BTC/MXN"
     assert strategy_name == "trend_rsi"
     assert score == 67.5
+
+
+@pytest.mark.asyncio
+async def test_scan_best_opportunity_prefers_higher_roi_rank(monkeypatch):
+    import agents.orchestrator as orch
+
+    async def fake_get_available_symbols(*args, **kwargs):
+        return ["ETH/USD", "SOL/USD"]
+
+    async def fake_assess_market_opportunity(exchange, symbol, timeframe="15m", limit=100):
+        if symbol == "ETH/USD":
+            return {
+                "symbol": symbol,
+                "strategy": "adaptive",
+                "params": {},
+                "score": 74.0,
+                "rank_score": 78.0,
+                "expected_roi_pct": 1.6,
+                "eligible": True,
+            }
+        return {
+            "symbol": symbol,
+            "strategy": "adaptive",
+            "params": {},
+            "score": 71.0,
+            "rank_score": 92.0,
+            "expected_roi_pct": 4.9,
+            "eligible": True,
+        }
+
+    monkeypatch.setattr(orch, "get_available_symbols", fake_get_available_symbols, raising=False)
+    monkeypatch.setattr(orch, "assess_market_opportunity", fake_assess_market_opportunity)
+
+    symbol, strategy_name, params, score = await orch.scan_best_opportunity(quote_currency="USD")
+
+    assert symbol == "SOL/USD"
+    assert strategy_name == "adaptive"
+    assert score == 92.0

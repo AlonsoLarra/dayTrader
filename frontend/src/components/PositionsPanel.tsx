@@ -9,6 +9,20 @@ interface Props {
   refreshTrigger?: number;
 }
 
+function getQuoteCurrency(symbol: string) {
+  return (symbol.includes('/') ? symbol.split('/')[1] : 'MXN').toUpperCase();
+}
+
+function formatQuoteAmount(value: number, quoteCurrency = 'MXN') {
+  const normalizedQuote = (quoteCurrency || 'MXN').toUpperCase();
+  const digits = normalizedQuote === 'BTC' ? 6 : 2;
+  const formatted = Number(value || 0).toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+  return normalizedQuote === 'MXN' ? `$${formatted} MXN` : `${formatted} ${normalizedQuote}`;
+}
+
 export function PositionsPanel({ onSold, refreshTrigger }: Props) {
   const [positions, setPositions] = useState<Position[]>([]);
   const [spinning, setSpinning] = useState(false);
@@ -91,6 +105,7 @@ export function PositionsPanel({ onSold, refreshTrigger }: Props) {
           const pnlPositive = (pos.unrealized_pnl ?? 0) >= 0;
           const isConfirming = confirm === pos.agent_id;
           const isSelling = selling === pos.agent_id;
+          const quoteCurrency = getQuoteCurrency(pos.symbol);
 
           return (
             <div key={pos.agent_id} className="rounded-lg border border-gray-700 p-3 bg-gray-900">
@@ -112,13 +127,13 @@ export function PositionsPanel({ onSold, refreshTrigger }: Props) {
               <div className="grid grid-cols-3 gap-3 mb-3">
                 <div>
                   <div className="text-xs text-gray-500 mb-0.5">Entry</div>
-                  <div className="text-sm text-white font-mono">{pos.entry_price.toLocaleString('es-MX', { maximumFractionDigits: 2 })}</div>
+                  <div className="text-sm text-white font-mono">{formatQuoteAmount(pos.entry_price, quoteCurrency)}</div>
                 </div>
                 <div>
                   <div className="text-xs text-gray-500 mb-0.5">Current</div>
                   <div className="text-sm text-white font-mono">
                     {pos.current_price != null
-                      ? pos.current_price.toLocaleString('es-MX', { maximumFractionDigits: 2 })
+                      ? formatQuoteAmount(pos.current_price, quoteCurrency)
                       : '—'}
                   </div>
                 </div>
@@ -126,7 +141,7 @@ export function PositionsPanel({ onSold, refreshTrigger }: Props) {
                   <div className="text-xs text-gray-500 mb-0.5">Unrealized P&amp;L</div>
                   <div className={clsx('text-sm font-bold font-mono', pnlPositive ? 'text-green-400' : 'text-red-400')}>
                     {pos.unrealized_pnl != null
-                      ? `${pnlPositive ? '+' : ''}$${pos.unrealized_pnl.toFixed(2)}`
+                      ? `${pnlPositive ? '+' : '-'}${formatQuoteAmount(Math.abs(pos.unrealized_pnl), quoteCurrency)}`
                       : '—'}
                     {pos.pnl_pct != null && (
                       <span className="text-xs font-normal ml-1 opacity-70">
@@ -144,7 +159,7 @@ export function PositionsPanel({ onSold, refreshTrigger }: Props) {
                 </div>
                 <div className="text-sm font-bold text-white">
                   {pos.proceeds_if_sold != null
-                    ? `$${pos.proceeds_if_sold.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN`
+                    ? formatQuoteAmount(pos.proceeds_if_sold, quoteCurrency)
                     : '—'}
                 </div>
               </div>
@@ -164,7 +179,7 @@ export function PositionsPanel({ onSold, refreshTrigger }: Props) {
                     disabled={isSelling}
                     className="flex-1 py-1.5 text-sm rounded bg-red-700 hover:bg-red-600 text-white font-medium disabled:opacity-50"
                   >
-                    {isSelling ? 'Selling…' : `Confirm Sell at $${pos.current_price?.toFixed(2) ?? '?'}`}
+                    {isSelling ? 'Selling…' : `Confirm Sell at ${pos.current_price != null ? formatQuoteAmount(pos.current_price, quoteCurrency) : '?'}`}
                   </button>
                   <button
                     onClick={() => setConfirm(null)}

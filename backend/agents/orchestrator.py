@@ -26,6 +26,12 @@ STRATEGY_MAP = {
 
 ALL_PAIRS = ["BTC/MXN", "ETH/MXN", "SOL/MXN", "XRP/MXN", "AVAX/MXN", "LTC/MXN"]
 AUTO_MIN_BUY_CONFIDENCE = 0.15
+SUPPORTED_PAPER_QUOTES = ("MXN", "BTC", "USD", "USDT")
+
+
+def _normalize_quote_currency(value: Optional[str] = "MXN") -> str:
+    normalized = (value or "MXN").upper()
+    return normalized if normalized in SUPPORTED_PAPER_QUOTES else "MXN"
 
 
 def pick_auto_strategy_for_ohlcv(ohlcv: list) -> tuple:
@@ -122,6 +128,71 @@ def _normalize_market_action(signal_value: str) -> str:
     return "WAITING"
 
 
+def _estimate_long_upside_metrics(ohlcv: list, indicators: Optional[dict] = None, confidence: float = 0.0) -> dict:
+    """Estimate whether a long setup has enough upside and reward/risk to justify deployment."""
+    if len(ohlcv) < 20:
+        return {
+            "expected_roi_pct": 0.0,
+            "reward_risk_ratio": 0.0,
+            "trend_strength_pct": 0.0,
+            "atr_pct": 0.0,
+            "upside_room_pct": 0.0,
+        }
+
+    closes = np.array([c[4] for c in ohlcv], dtype=float)
+    highs = np.array([c[2] for c in ohlcv], dtype=float)
+    lows = np.array([c[3] for c in ohlcv], dtype=float)
+    current_price = float(closes[-1] or 0.0)
+    if current_price <= 0:
+        return {
+            "expected_roi_pct": 0.0,
+            "reward_risk_ratio": 0.0,
+            "trend_strength_pct": 0.0,
+            "atr_pct": 0.0,
+            "upside_room_pct": 0.0,
+        }
+
+    ema20 = float(np.mean(closes[-20:]))
+    ema50 = float(np.mean(closes[-50:])) if len(closes) >= 50 else ema20
+    trend_strength_pct = ((ema20 - ema50) / ema50 * 100.0) if ema50 else 0.0
+    short_momentum_pct = ((current_price - float(closes[-6])) / float(closes[-6]) * 100.0) if len(closes) >= 6 and closes[-6] else 0.0
+    recent_high = float(np.max(highs[-20:]))
+    upside_room_pct = max(0.0, ((recent_high - current_price) / current_price) * 100.0)
+    atr_pct = max(0.0, float(np.mean(highs[-14:] - lows[-14:])) / current_price * 100.0) if len(highs) >= 14 else 0.0
+
+    indicator_map = indicators or {}
+    price_vs_ema = float(indicator_map.get("price_vs_ema", 0.0) or 0.0)
+    volume_ratio = float(indicator_map.get("volume_ratio", 1.0) or 1.0)
+
+    if price_vs_ema < -2.5 or price_vs_ema > 4.0:
+        pullback_quality = 0.65
+    elif -1.5 <= price_vs_ema <= 2.5:
+        pullback_quality = 1.0
+    else:
+        pullback_quality = 0.85
+
+    reward_risk_ratio = upside_room_pct / max(atr_pct * 1.35, 0.35)
+
+    expected_roi_pct = (
+        upside_room_pct * 0.45
+        + max(trend_strength_pct, 0.0) * 0.9
+        + max(short_momentum_pct, 0.0) * 0.35
+        + atr_pct * 0.35
+    )
+    expected_roi_pct *= (0.7 + min(max(confidence, 0.0), 1.0) * 0.6)
+    expected_roi_pct *= min(1.25, max(0.8, volume_ratio / 1.1))
+    expected_roi_pct *= pullback_quality
+    expected_roi_pct = max(0.0, min(8.0, expected_roi_pct))
+
+    return {
+        "expected_roi_pct": round(expected_roi_pct, 2),
+        "reward_risk_ratio": round(max(0.0, reward_risk_ratio), 2),
+        "trend_strength_pct": round(trend_strength_pct, 2),
+        "atr_pct": round(atr_pct, 2),
+        "upside_room_pct": round(upside_room_pct, 2),
+    }
+
+
 async def assess_market_opportunity(exchange, symbol: str, timeframe: str = "15m", limit: int = 100) -> dict:
     """Score a market specifically for long-only auto-trade deployment and rotation."""
     try:
@@ -130,7 +201,11 @@ async def assess_market_opportunity(exchange, symbol: str, timeframe: str = "15m
             return {
                 "symbol": symbol,
                 "score": 0.0,
+                "rank_score": 0.0,
                 "base_score": 0.0,
+                "expected_roi_pct": 0.0,
+                "reward_risk_ratio": 0.0,
+                "trend_strength_pct": 0.0,
                 "strategy": "trend_rsi",
                 "params": {},
                 "signal": "hold",
@@ -150,7 +225,11 @@ async def assess_market_opportunity(exchange, symbol: str, timeframe: str = "15m
             return {
                 "symbol": symbol,
                 "score": 0.0,
+                "rank_score": 0.0,
                 "base_score": round(base_score, 2),
+                "expected_roi_pct": 0.0,
+                "reward_risk_ratio": 0.0,
+                "trend_strength_pct": 0.0,
                 "strategy": strategy_name,
                 "params": params,
                 "signal": "hold",
@@ -175,32 +254,55 @@ async def assess_market_opportunity(exchange, symbol: str, timeframe: str = "15m
         in_uptrend = bool(indicators.get("in_uptrend", False))
         volume_ok = bool(indicators.get("volume_ok", False))
 
+        upside_metrics = _estimate_long_upside_metrics(ohlcv, indicators, confidence)
+        expected_roi_pct = float(upside_metrics.get("expected_roi_pct", 0.0) or 0.0)
+        reward_risk_ratio = float(upside_metrics.get("reward_risk_ratio", 0.0) or 0.0)
+        trend_strength_pct = float(upside_metrics.get("trend_strength_pct", 0.0) or 0.0)
+
         score = 0.0
+        rank_score = 0.0
         if signal == "buy":
             score = base_score + 18.0 + confidence * 22.0
             if in_uptrend:
                 score += 3.0
             if volume_ok:
                 score += 2.0
+            score += min(14.0, expected_roi_pct * 3.5)
+            score += min(8.0, max(0.0, reward_risk_ratio - 1.0) * 4.0)
+            rank_score = score + min(12.0, expected_roi_pct * 2.5) + min(8.0, max(0.0, trend_strength_pct) * 2.0)
         elif signal == "hold":
             score = min(base_score * (0.35 if in_uptrend else 0.2), 24.0)
+            rank_score = score
         else:
             score = min(base_score * 0.1, 10.0)
+            rank_score = score
 
-        eligible = signal == "buy" and confidence >= AUTO_MIN_BUY_CONFIDENCE
+        eligible = (
+            signal == "buy"
+            and confidence >= AUTO_MIN_BUY_CONFIDENCE
+            and expected_roi_pct >= 1.0
+            and reward_risk_ratio >= 1.1
+        )
         if not eligible:
             score = min(score, 24.0)
+            rank_score = min(rank_score, 24.0)
+
+        roi_reason = f"Estimated upside ~{expected_roi_pct:.1f}% · reward/risk {reward_risk_ratio:.1f}x"
 
         return {
             "symbol": symbol,
             "score": round(min(100.0, max(0.0, score)), 2),
+            "rank_score": round(min(120.0, max(0.0, rank_score)), 2),
             "base_score": round(base_score, 2),
+            "expected_roi_pct": round(expected_roi_pct, 2),
+            "reward_risk_ratio": round(reward_risk_ratio, 2),
+            "trend_strength_pct": round(trend_strength_pct, 2),
             "strategy": strategy_name,
             "params": params,
             "signal": signal,
             "action": _normalize_market_action(signal),
             "confidence": confidence,
-            "reason": result.reasoning,
+            "reason": f"{result.reasoning} · {roi_reason}",
             "eligible": eligible,
             "indicators": indicators,
         }
@@ -208,7 +310,11 @@ async def assess_market_opportunity(exchange, symbol: str, timeframe: str = "15m
         return {
             "symbol": symbol,
             "score": 0.0,
+            "rank_score": 0.0,
             "base_score": 0.0,
+            "expected_roi_pct": 0.0,
+            "reward_risk_ratio": 0.0,
+            "trend_strength_pct": 0.0,
             "strategy": "ma_crossover",
             "params": {},
             "signal": "hold",
@@ -220,8 +326,12 @@ async def assess_market_opportunity(exchange, symbol: str, timeframe: str = "15m
         }
 
 
-async def _validate_agent_creation(session, symbol: str, budget: float) -> None:
-    """Guard against duplicate pair allocation and wallet oversubscription."""
+async def _validate_agent_creation(session, symbol: str, budget: float, quote_currency: str = "MXN") -> None:
+    """Guard against duplicate pair allocation and wallet oversubscription for the selected quote wallet."""
+    normalized_quote = _normalize_quote_currency(
+        quote_currency or (symbol.split("/")[-1] if symbol and "/" in symbol else "MXN")
+    )
+
     result = await session.execute(select(AgentState).where(AgentState.status != "killed"))
     states = result.scalars().all()
 
@@ -233,7 +343,13 @@ async def _validate_agent_creation(session, symbol: str, budget: float) -> None:
     wallet_result = await session.execute(select(PaperWallet).limit(1))
     wallet = wallet_result.scalar_one_or_none()
     if wallet is None:
-        wallet = PaperWallet(starting_balance=100.0, updated_at=datetime.utcnow())
+        wallet = PaperWallet(
+            starting_balance=100.0,
+            btc_balance=0.01,
+            usd_balance=100.0,
+            usdt_balance=100.0,
+            updated_at=datetime.utcnow(),
+        )
         session.add(wallet)
         await session.flush()
 
@@ -247,19 +363,37 @@ async def _validate_agent_creation(session, symbol: str, budget: float) -> None:
         for agent_id, total in pnl_result.all()
     }
 
-    total_realized_pnl = sum(pnl_by_agent.values())
-    deployed = 0.0
+    relevant_states = []
     for state in states:
+        state_quote = _normalize_quote_currency(
+            getattr(state, "quote_currency", None)
+            or ((state.symbol or "").split("/")[-1] if getattr(state, "symbol", None) else "MXN")
+        )
+        if state_quote == normalized_quote:
+            relevant_states.append(state)
+
+    total_realized_pnl = sum(pnl_by_agent.get(state.agent_id, 0.0) for state in relevant_states)
+    deployed = 0.0
+    for state in relevant_states:
         agent_equity = max(
             0.0,
             float(state.budget_allocated or 0.0) + pnl_by_agent.get(state.agent_id, 0.0),
         )
         deployed += agent_equity
 
-    available = max(0.0, float(wallet.starting_balance or 0.0) + total_realized_pnl - deployed)
+    attribute_map = {
+        "MXN": "starting_balance",
+        "BTC": "btc_balance",
+        "USD": "usd_balance",
+        "USDT": "usdt_balance",
+    }
+    starting_balance = float(getattr(wallet, attribute_map.get(normalized_quote, "starting_balance"), 0.0) or 0.0)
+    available = max(0.0, starting_balance + total_realized_pnl - deployed)
     if float(budget or 0.0) > available + 1e-9:
+        precision = 8 if normalized_quote == "BTC" else 2
         raise ValueError(
-            f"Insufficient wallet balance. Requested ${float(budget):.2f} MXN but only ${available:.2f} MXN available."
+            f"Insufficient wallet balance. Requested {float(budget):.{precision}f} {normalized_quote} "
+            f"but only {available:.{precision}f} {normalized_quote} available."
         )
 
 
@@ -298,15 +432,19 @@ def evaluate_rotation_decision(
     return "rotate", f"Rotate from {current_symbol} to {best_symbol}: score edge +{score_delta:.1f} supports a stronger setup"
 
 
-async def scan_best_opportunity(exclude_symbol: Optional[str] = None, blocked_symbols: Optional[set] = None) -> tuple:
+async def scan_best_opportunity(
+    exclude_symbol: Optional[str] = None,
+    blocked_symbols: Optional[set] = None,
+    quote_currency: str = "MXN",
+) -> tuple:
     """
-    Scan all currently available Bitso MXN markets and return the strongest long setup.
+    Scan all currently available Bitso markets for the selected quote wallet and return the strongest long setup.
     Returns (symbol, strategy_name, params, score).
     A positive score means the pair has an active BUY setup with enough confidence to justify deployment/rotation.
     """
     exchange = create_exchange()
     blocked = {sym for sym in (blocked_symbols or set()) if sym}
-    all_pairs = await get_available_symbols("MXN")
+    all_pairs = await get_available_symbols(_normalize_quote_currency(quote_currency))
     pairs_to_scan = [p for p in all_pairs if p not in blocked and p != exclude_symbol]
     if exclude_symbol and exclude_symbol in all_pairs and exclude_symbol not in blocked:
         pairs_to_scan.append(exclude_symbol)
@@ -319,7 +457,12 @@ async def scan_best_opportunity(exclude_symbol: Optional[str] = None, blocked_sy
         market = await assess_market_opportunity(exchange, symbol, timeframe="15m", limit=100)
         if not market.get("eligible"):
             return symbol, market.get("strategy", "ma_crossover"), market.get("params", {}), 0.0
-        return symbol, market["strategy"], market.get("params", {}), float(market.get("score", 0.0) or 0.0)
+        return (
+            symbol,
+            market["strategy"],
+            market.get("params", {}),
+            float(market.get("rank_score", market.get("score", 0.0)) or 0.0),
+        )
 
     results = await asyncio.gather(*[_score_one(sym) for sym in pairs_to_scan])
     results = sorted(results, key=lambda x: x[3], reverse=True)
@@ -412,12 +555,16 @@ class AgentOrchestrator:
         params: dict,
         budget: float,
         symbol: str = None,
+        quote_currency: str = "MXN",
         rotation_enabled: bool = False,
         aggressive_rotation: bool = False,
         rotation_interval_minutes: int = 1,
         min_rotation_score_delta: float = 1.0,
     ) -> str:
         symbol = symbol or settings.TRADING_PAIR
+        quote_currency = _normalize_quote_currency(
+            quote_currency or (symbol.split("/")[-1] if symbol and "/" in symbol else "MXN")
+        )
         rotation_interval_minutes = max(1, int(rotation_interval_minutes or 1))
         min_rotation_score_delta = float(min_rotation_score_delta or 1.0)
 
@@ -430,7 +577,10 @@ class AgentOrchestrator:
                 for agent in self._agents.values()
                 if getattr(agent, "symbol", None)
             }
-            best_symbol, strategy_name, params, score = await scan_best_opportunity(blocked_symbols=blocked_symbols)
+            best_symbol, strategy_name, params, score = await scan_best_opportunity(
+                blocked_symbols=blocked_symbols,
+                quote_currency=quote_currency,
+            )
             symbol = best_symbol
         
         strategy_cls = STRATEGY_MAP.get(strategy_name)
@@ -469,7 +619,7 @@ class AgentOrchestrator:
 
         async with self._create_lock:
             async with AsyncSessionLocal() as session:
-                await _validate_agent_creation(session, symbol, budget)
+                await _validate_agent_creation(session, symbol, budget, quote_currency=quote_currency)
                 state = AgentState(
                     agent_id=agent_id,
                     strategy=strategy_name,
@@ -484,6 +634,7 @@ class AgentOrchestrator:
                     rotation_interval_minutes=rotation_interval_minutes,
                     min_rotation_score_delta=min_rotation_score_delta,
                     symbol=symbol,
+                    quote_currency=quote_currency,
                     created_at=datetime.utcnow(),
                     updated_at=datetime.utcnow(),
                 )

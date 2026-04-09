@@ -91,6 +91,32 @@ async def test_set_paper_wallet(client):
 
 
 @pytest.mark.asyncio
+async def test_set_paper_wallet_supports_btc_balance(client):
+    r = await client.post("/api/settings/paper-wallet", json={"starting_balance": 0.01, "currency": "BTC"})
+    assert r.status_code == 200
+    assert r.json()["currency"] == "BTC"
+    assert r.json()["starting_balance"] == pytest.approx(0.01)
+
+    r2 = await client.get("/api/settings/paper-wallet")
+    data = r2.json()
+    assert "balances" in data
+    assert data["balances"]["BTC"]["starting_balance"] == pytest.approx(0.01)
+
+
+@pytest.mark.asyncio
+async def test_set_paper_wallet_supports_usd_balance(client):
+    r = await client.post("/api/settings/paper-wallet", json={"starting_balance": 250.0, "currency": "USD"})
+    assert r.status_code == 200
+    assert r.json()["currency"] == "USD"
+    assert r.json()["starting_balance"] == pytest.approx(250.0)
+
+    r2 = await client.get("/api/settings/paper-wallet", params={"currency": "USD"})
+    data = r2.json()
+    assert data["currency"] == "USD"
+    assert data["balances"]["USD"]["starting_balance"] == pytest.approx(250.0)
+
+
+@pytest.mark.asyncio
 async def test_set_paper_wallet_rejects_zero(client):
     r = await client.post("/api/settings/paper-wallet", json={"starting_balance": 0})
     assert r.status_code == 400
@@ -208,6 +234,21 @@ async def test_create_agent_over_budget_rejected(client):
 
 
 @pytest.mark.asyncio
+async def test_create_agent_uses_btc_wallet_balance(client):
+    await client.post("/api/settings/paper-wallet", json={"starting_balance": 0.005, "currency": "BTC"})
+
+    r = await client.post("/api/agents", json={
+        "strategy": "trend_rsi",
+        "params": {},
+        "budget": 0.02,
+        "symbol": "ETH/BTC",
+        "quote_currency": "BTC",
+    })
+    assert r.status_code == 400
+    assert "BTC" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_create_agent_rejects_duplicate_active_symbol(client):
     from sqlalchemy import text
     from tests.conftest import TestingSessionLocal
@@ -279,7 +320,9 @@ async def test_create_agent_concurrent_requests_do_not_overspend_wallet(client):
 async def test_list_markets(client, monkeypatch):
     import routers.agents as agents_router
 
-    async def fake_get_available_symbols(*args, **kwargs):
+    async def fake_get_available_symbols(quote_currency="MXN"):
+        if quote_currency == "BTC":
+            return ["ETH/BTC", "SOL/BTC"]
         return ["ADA/MXN", "BTC/MXN", "USDT/MXN"]
 
     monkeypatch.setattr(agents_router, "get_available_symbols", fake_get_available_symbols, raising=False)
@@ -288,6 +331,10 @@ async def test_list_markets(client, monkeypatch):
     assert r.status_code == 200
     data = r.json()
     assert data["symbols"] == ["ADA/MXN", "BTC/MXN", "USDT/MXN"]
+
+    r_btc = await client.get("/api/agents/markets", params={"quote": "BTC"})
+    assert r_btc.status_code == 200
+    assert r_btc.json()["symbols"] == ["ETH/BTC", "SOL/BTC"]
 
 
 @pytest.mark.asyncio

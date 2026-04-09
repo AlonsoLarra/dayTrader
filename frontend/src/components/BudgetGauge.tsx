@@ -3,15 +3,26 @@ import clsx from 'clsx';
 interface Props {
   allocated: number;
   used: number;
+  quoteCurrency?: string;
 }
 
-export function BudgetGauge({ allocated, used }: Props) {
+function formatQuoteAmount(value: number, quoteCurrency = 'MXN') {
+  const normalizedQuote = (quoteCurrency || 'MXN').toUpperCase();
+  const digits = normalizedQuote === 'BTC' ? 6 : 2;
+  const formatted = Number(value || 0).toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+  return normalizedQuote === 'MXN' ? `$${formatted} MXN` : `${formatted} ${normalizedQuote}`;
+}
+
+export function BudgetGauge({ allocated, used, quoteCurrency = 'MXN' }: Props) {
   const pct = allocated > 0 ? Math.min((used / allocated) * 100, 100) : 0;
   return (
     <div className="mt-2">
       <div className="flex justify-between text-xs text-gray-400 mb-1">
         <span>Budget Used</span>
-        <span>${used.toFixed(2)} / ${allocated.toFixed(2)}</span>
+        <span>{formatQuoteAmount(used, quoteCurrency)} / {formatQuoteAmount(allocated, quoteCurrency)}</span>
       </div>
       <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
         <div

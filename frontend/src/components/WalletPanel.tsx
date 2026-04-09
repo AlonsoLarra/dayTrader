@@ -18,6 +18,7 @@ export function WalletPanel() {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState(false);
+  const [selectedQuote, setSelectedQuote] = useState<'MXN' | 'BTC' | 'USD' | 'USDT'>('MXN');
 
   const loadPaperWallet = useCallback(async () => {
     try {
@@ -73,7 +74,8 @@ export function WalletPanel() {
   };
 
   const handleEditBalance = () => {
-    setEditValue(paperWallet?.starting_balance.toString() ?? '100');
+    const selectedPaperWallet = paperWallet?.balances?.[selectedQuote] ?? paperWallet;
+    setEditValue(selectedPaperWallet?.starting_balance.toString() ?? '100');
     setEditing(true);
   };
 
@@ -82,7 +84,7 @@ export function WalletPanel() {
     if (!val || val <= 0) return;
     setSaving(true);
     try {
-      await setPaperWallet(val);
+      await setPaperWallet(val, selectedQuote);
       await loadPaperWallet();
       setEditing(false);
     } finally {
@@ -94,7 +96,8 @@ export function WalletPanel() {
   const coins = Object.entries(balances).filter(([c]) => c !== 'MXN');
 
   const pw = paperWallet;
-  const pct = pw ? Math.min(100, (pw.deployed / pw.starting_balance) * 100) : 0;
+  const selectedPaperWallet = pw?.balances?.[selectedQuote] ?? pw;
+  const pct = selectedPaperWallet ? Math.min(100, (selectedPaperWallet.deployed / Math.max(selectedPaperWallet.starting_balance, 1e-9)) * 100) : 0;
 
   return (
     <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
@@ -149,6 +152,21 @@ export function WalletPanel() {
       {/* Paper wallet breakdown */}
       {paperMode && pw && (
         <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            {(['MXN', 'BTC', 'USD', 'USDT'] as const).map(quote => (
+              <button
+                key={quote}
+                onClick={() => setSelectedQuote(quote)}
+                className={`px-2.5 py-1 rounded-full text-[11px] border transition-colors ${
+                  selectedQuote === quote
+                    ? 'bg-blue-600/20 text-blue-200 border-blue-500/40'
+                    : 'bg-gray-700/70 text-gray-400 border-gray-600 hover:text-gray-200'
+                }`}
+              >
+                {quote}
+              </button>
+            ))}
+          </div>
           {/* Starting balance — editable */}
           <div className="flex items-center justify-between">
             <span className="text-xs text-gray-500 uppercase tracking-wide">Capital</span>
@@ -173,7 +191,10 @@ export function WalletPanel() {
             ) : (
               <div className="flex items-center gap-2">
                 <span className="text-sm font-bold text-white">
-                  ${pw.starting_balance.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+                  {selectedPaperWallet?.starting_balance.toLocaleString('en-US', {
+                    minimumFractionDigits: selectedQuote === 'BTC' ? 6 : 2,
+                    maximumFractionDigits: selectedQuote === 'BTC' ? 6 : 2,
+                  })} {selectedQuote}
                 </span>
                 <button onClick={handleEditBalance} className="p-0.5 text-gray-500 hover:text-gray-300">
                   <Edit2 size={12} />
@@ -186,7 +207,10 @@ export function WalletPanel() {
           <div className="flex items-center justify-between">
             <span className="text-xs text-gray-500">Available</span>
             <span className={`text-sm font-semibold ${pw.available > 0 ? 'text-green-400' : 'text-red-400'}`}>
-              ${pw.available.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+              {selectedPaperWallet?.available.toLocaleString('en-US', {
+                minimumFractionDigits: selectedQuote === 'BTC' ? 6 : 2,
+                maximumFractionDigits: selectedQuote === 'BTC' ? 6 : 2,
+              })} {selectedQuote}
             </span>
           </div>
 
@@ -194,16 +218,22 @@ export function WalletPanel() {
           <div className="flex items-center justify-between">
             <span className="text-xs text-gray-500">In Agents</span>
             <span className="text-sm text-gray-300">
-              ${pw.deployed.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+              {selectedPaperWallet?.deployed.toLocaleString('en-US', {
+                minimumFractionDigits: selectedQuote === 'BTC' ? 6 : 2,
+                maximumFractionDigits: selectedQuote === 'BTC' ? 6 : 2,
+              })} {selectedQuote}
             </span>
           </div>
 
           {/* In-market */}
-          {pw.in_market > 0 && (
+          {(selectedPaperWallet?.in_market ?? 0) > 0 && (
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-500">In Positions</span>
               <span className="text-sm text-blue-300">
-                ${pw.in_market.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+                {selectedPaperWallet?.in_market.toLocaleString('en-US', {
+                  minimumFractionDigits: selectedQuote === 'BTC' ? 6 : 2,
+                  maximumFractionDigits: selectedQuote === 'BTC' ? 6 : 2,
+                })} {selectedQuote}
               </span>
             </div>
           )}

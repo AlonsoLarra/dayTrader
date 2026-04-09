@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import { Zap, CheckCircle, BarChart2 } from 'lucide-react';
 import type { PairAnalysis, DeployResult } from '../types';
-import { analyzeMarket, deployPortfolio } from '../api/client';
+import { analyzeMarket, deployPortfolio, getMarkets } from '../api/client';
 
 type Status = 'idle' | 'working' | 'deployed';
 type BudgetMode = 'fixed' | 'percent';
+
+function getActionBadgeClass(action?: string) {
+  if (action === 'BUY SIGNAL') return 'bg-green-500/15 text-green-300 border-green-500/30';
+  if (action === 'SELL SIGNAL') return 'bg-red-500/15 text-red-300 border-red-500/30';
+  return 'bg-gray-700/70 text-gray-300 border-gray-600';
+}
 
 interface Props {
   walletBalance: number;
@@ -20,6 +26,7 @@ export function SmartDeploy({ walletBalance, onDeployed }: Props) {
   const [status, setStatus] = useState<Status>('idle');
   const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
   const [pairs, setPairs] = useState<PairAnalysis[]>([]);
+  const [scanSymbols, setScanSymbols] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const computedBudget =
@@ -35,10 +42,20 @@ export function SmartDeploy({ walletBalance, onDeployed }: Props) {
     setError(null);
     setStatus('working');
     setPairs([]);
+    setScanSymbols([]);
 
     try {
+      const marketsPromise = Promise.resolve(getMarkets())
+        .then(d => {
+          setScanSymbols(Array.isArray(d?.symbols) ? d.symbols : []);
+        })
+        .catch(() => {
+          setScanSymbols([]);
+        });
+
       // Step 1: Analyze
       const analysis = await analyzeMarket(10);
+      await marketsPromise;
       setPairs(analysis.pairs);
 
       // Step 2: Deploy top picks automatically
@@ -97,19 +114,58 @@ export function SmartDeploy({ walletBalance, onDeployed }: Props) {
 
       {/* Working */}
       {status === 'working' && (
-        <div className="flex flex-col items-center gap-3 py-4">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3 py-4">
+          <div className="flex items-center gap-3 justify-center">
             <svg className="animate-spin w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v8z" />
             </svg>
-            <span className="text-sm text-gray-400">
-              {pairs.length === 0 ? 'Analyzing market conditions…' : `Found ${pairs.length} pairs — creating agents…`}
+            <span className="text-sm text-gray-300">
+              {pairs.length === 0 ? 'Analyzing market conditions…' : `Reviewed ${pairs.length} markets — creating agents…`}
             </span>
           </div>
-          {pairs.length > 0 && (
-            <div className="text-xs text-gray-500">
-              Top picks: {pairs.slice(0, 3).map(p => p.symbol.replace('/MXN', '')).join(', ')}
+          {pairs.length === 0 ? (
+            <div className="rounded-lg border border-gray-700 bg-gray-900/50 p-3 text-xs text-gray-500 space-y-3">
+              <div>Checking trend, RSI, volume, and confidence across the live Bitso MXN markets.</div>
+              {scanSymbols.length > 0 && (
+                <div>
+                  <div className="text-[11px] text-gray-300 font-semibold mb-1.5">Markets in this scan ({scanSymbols.length})</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {scanSymbols.slice(0, 10).map(symbol => (
+                      <span key={symbol} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800/80 text-blue-200 border border-gray-600 font-mono">
+                        {symbol}
+                      </span>
+                    ))}
+                    {scanSymbols.length > 10 && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800/80 text-gray-300 border border-gray-600">
+                        +{scanSymbols.length - 10} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-gray-700 bg-gray-900/50 p-3 space-y-2 max-h-64 overflow-y-auto">
+              {pairs.slice(0, 4).map(pair => (
+                <div key={pair.symbol} className="rounded-md border border-gray-700 bg-gray-800/70 p-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-semibold text-white">{pair.symbol}</div>
+                      <div className="text-[11px] text-gray-500">{(pair.strategy ?? 'market scan').replace('_', ' ')}</div>
+                    </div>
+                    <div className="flex flex-wrap gap-1 justify-end">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full border ${getActionBadgeClass(pair.action)}`}>
+                        {pair.action ?? 'WAITING'}
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                        {pair.score.toFixed(0)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-gray-400 mt-1">{pair.reason}</div>
+                </div>
+              ))}
             </div>
           )}
         </div>

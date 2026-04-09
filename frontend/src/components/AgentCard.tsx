@@ -20,6 +20,24 @@ function formatRelativeTime(value?: string | null, fallback = 'Pending') {
   return `${Math.round(diffSec / 3600)}h ago`;
 }
 
+function getQuoteCurrency(symbol: string, explicit?: string) {
+  return (explicit || (symbol.includes('/') ? symbol.split('/')[1] : 'MXN') || 'MXN').toUpperCase();
+}
+
+function formatQuoteAmount(value: number, quoteCurrency = 'MXN') {
+  const normalizedQuote = (quoteCurrency || 'MXN').toUpperCase();
+  const digits = normalizedQuote === 'BTC' ? 6 : 2;
+  const formatted = Number(value || 0).toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+  return normalizedQuote === 'MXN' ? `$${formatted} MXN` : `${formatted} ${normalizedQuote}`;
+}
+
+function formatSignedQuoteAmount(value: number, quoteCurrency = 'MXN') {
+  return `${value >= 0 ? '+' : '-'}${formatQuoteAmount(Math.abs(value), quoteCurrency)}`;
+}
+
 export function AgentCard({ agent, onUpdate }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [logs, setLogs] = useState<AgentLog[]>([]);
@@ -84,6 +102,7 @@ export function AgentCard({ agent, onUpdate }: Props) {
 
   const realizedPnlTotal = agent.realized_pnl_total ?? agent.realized_pnl_today ?? 0;
   const remainingBudget = Math.max(0, agent.budget_allocated + realizedPnlTotal - agent.budget_used);
+  const quoteCurrency = getQuoteCurrency(agent.symbol, agent.quote_currency);
   const rotationEnabled = agent.rotation_enabled ?? false;
   const reviewInterval = agent.rotation_interval_minutes ?? 1;
   const strategyLabel = {
@@ -183,12 +202,12 @@ export function AgentCard({ agent, onUpdate }: Props) {
       <div className="grid grid-cols-4 gap-2 text-sm mb-2">
         <div>
           <div className="text-gray-500 text-xs">Budget</div>
-          <div className="text-white font-mono text-sm">${agent.budget_allocated.toLocaleString()}</div>
+          <div className="text-white font-mono text-sm">{formatQuoteAmount(agent.budget_allocated, quoteCurrency)}</div>
         </div>
         <div>
           <div className="text-gray-500 text-xs">Remaining</div>
           <div className={clsx('font-mono text-sm', remainingBudget < agent.budget_allocated * 0.5 ? 'text-amber-400' : 'text-white')}>
-            ${remainingBudget.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {formatQuoteAmount(remainingBudget, quoteCurrency)}
           </div>
         </div>
         <div>
@@ -202,7 +221,7 @@ export function AgentCard({ agent, onUpdate }: Props) {
             'text-red-400': agent.realized_pnl_today < 0,
             'text-gray-400': agent.realized_pnl_today === 0,
           })}>
-            {agent.realized_pnl_today >= 0 ? '+' : ''}${agent.realized_pnl_today.toFixed(2)}
+            {formatSignedQuoteAmount(agent.realized_pnl_today, quoteCurrency)}
           </div>
         </div>
       </div>
@@ -262,7 +281,7 @@ export function AgentCard({ agent, onUpdate }: Props) {
         </div>
       </div>
 
-      <BudgetGauge allocated={agent.budget_allocated} used={agent.budget_used} />
+      <BudgetGauge allocated={agent.budget_allocated} used={agent.budget_used} quoteCurrency={quoteCurrency} />
 
       {expanded && (
         <div className="mt-4 border-t border-gray-700 pt-3">

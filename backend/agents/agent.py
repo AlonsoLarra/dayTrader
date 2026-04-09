@@ -158,7 +158,11 @@ class TradingAgent:
 
         current_ohlcv = await get_ohlcv(self.exchange, self.symbol, "15m", 50)
         current_score = _score_pair(current_ohlcv)
-        best_symbol, new_strat_name, new_params, best_score = await scan_best_opportunity(exclude_symbol=None)
+        quote_currency = getattr(state, "quote_currency", None) or (self.symbol.split("/")[-1] if "/" in self.symbol else "MXN")
+        best_symbol, new_strat_name, new_params, best_score = await scan_best_opportunity(
+            exclude_symbol=None,
+            quote_currency=quote_currency,
+        )
 
         unrealized_pnl_pct = None
         if self.open_position and self.open_position.get("price"):
@@ -279,6 +283,7 @@ class TradingAgent:
                             trade = Trade(
                                 agent_id=self.agent_id,
                                 symbol=self.symbol,
+                                quote_currency=self.symbol.split("/")[-1] if "/" in self.symbol else "MXN",
                                 side=close_side,
                                 amount=self.open_position["amount"],
                                 price=sl_fill,
@@ -450,7 +455,8 @@ class TradingAgent:
                             # Pair rotation: after selling, scan market for the strongest next opportunity.
                             from agents.orchestrator import scan_best_opportunity, STRATEGY_MAP
                             new_symbol, new_strat_name, new_params, score = await scan_best_opportunity(
-                                exclude_symbol=None  # include all pairs — even same one if it's best
+                                exclude_symbol=None,  # include all pairs — even same one if it's best
+                                quote_currency=(self.symbol.split("/")[-1] if "/" in self.symbol else "MXN"),
                             )
                             if new_symbol != self.symbol or new_strat_name != self.strategy.name:
                                 new_strategy_cls = STRATEGY_MAP.get(new_strat_name)
@@ -512,6 +518,7 @@ class TradingAgent:
                     trade = Trade(
                         agent_id=self.agent_id,
                         symbol=self.symbol,
+                        quote_currency=self.symbol.split("/")[-1] if "/" in self.symbol else "MXN",
                         side=result.signal.value,
                         amount=amount,
                         price=fill_price,
@@ -576,6 +583,7 @@ class TradingAgent:
             trade = Trade(
                 agent_id=self.agent_id,
                 symbol=self.symbol,
+                quote_currency=self.symbol.split("/")[-1] if "/" in self.symbol else "MXN",
                 side="sell",
                 amount=amount,
                 price=fill_price,

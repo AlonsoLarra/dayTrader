@@ -14,9 +14,9 @@ from exchange.client import get_available_symbols
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 @router.get("/markets")
-async def list_markets():
-    """Return currently tradeable Bitso MXN symbols."""
-    return {"symbols": await get_available_symbols("MXN")}
+async def list_markets(quote: str = "MXN"):
+    """Return currently tradeable Bitso spot symbols for the requested quote currency."""
+    return {"symbols": await get_available_symbols((quote or "MXN").upper())}
 
 
 class CreateAgentRequest(BaseModel):
@@ -24,6 +24,7 @@ class CreateAgentRequest(BaseModel):
     params: dict = {}
     budget: float = 1000.0
     symbol: Optional[str] = None
+    quote_currency: Optional[str] = None
     rotation_enabled: bool = False
     aggressive_rotation: bool = False
     rotation_interval_minutes: int = 1
@@ -51,6 +52,7 @@ async def list_agents(db: AsyncSession = Depends(get_db)):
             "strategy": s.strategy,
             "status": s.status,
             "symbol": s.symbol,
+            "quote_currency": getattr(s, 'quote_currency', (s.symbol.split('/')[-1] if s.symbol and '/' in s.symbol else 'MXN')),
             "budget_allocated": s.budget_allocated,
             "budget_used": s.budget_used,
             "trades_today": s.trades_today,
@@ -73,11 +75,16 @@ async def list_agents(db: AsyncSession = Depends(get_db)):
 
 @router.post("")
 async def create_agent(req: CreateAgentRequest, db: AsyncSession = Depends(get_db)):
-    available = await get_available_budget(db)
+    quote_currency = (req.quote_currency or (req.symbol.split('/')[-1] if req.symbol and '/' in req.symbol else 'MXN')).upper()
+    available = await get_available_budget(db, quote_currency)
     if req.budget > available:
+        precision = 8 if quote_currency == 'BTC' else 2
         raise HTTPException(
             status_code=400,
-            detail=f"Insufficient wallet balance. Requested ${req.budget:.2f} MXN but only ${available:.2f} MXN available.",
+            detail=(
+                f"Insufficient wallet balance. Requested {req.budget:.{precision}f} {quote_currency} "
+                f"but only {available:.{precision}f} {quote_currency} available."
+            ),
         )
     try:
         agent_id, chosen_strategy = await orchestrator.create_agent(
@@ -85,6 +92,7 @@ async def create_agent(req: CreateAgentRequest, db: AsyncSession = Depends(get_d
             req.params,
             req.budget,
             req.symbol,
+            quote_currency=quote_currency,
             rotation_enabled=req.rotation_enabled,
             aggressive_rotation=req.aggressive_rotation,
             rotation_interval_minutes=req.rotation_interval_minutes,

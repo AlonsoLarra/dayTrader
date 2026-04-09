@@ -11,6 +11,7 @@ class Trade(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     agent_id: Mapped[str] = mapped_column(String, nullable=False)
     symbol: Mapped[str] = mapped_column(String, nullable=False)
+    quote_currency: Mapped[str] = mapped_column(String, nullable=False, default="MXN")
     side: Mapped[str] = mapped_column(String, nullable=False)  # buy / sell
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     price: Mapped[float] = mapped_column(Float, nullable=False)
@@ -54,6 +55,7 @@ class AgentState(Base):
     last_market_review_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_rotation_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     symbol: Mapped[str] = mapped_column(String, nullable=False, default="BTC/MXN")
+    quote_currency: Mapped[str] = mapped_column(String, nullable=False, default="MXN")
     open_position_side: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     open_position_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     open_position_amount: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -66,4 +68,7 @@ class PaperWallet(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     starting_balance: Mapped[float] = mapped_column(Float, nullable=False, default=100.0)
+    btc_balance: Mapped[float] = mapped_column(Float, nullable=False, default=0.01)
+    usd_balance: Mapped[float] = mapped_column(Float, nullable=False, default=100.0)
+    usdt_balance: Mapped[float] = mapped_column(Float, nullable=False, default=100.0)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

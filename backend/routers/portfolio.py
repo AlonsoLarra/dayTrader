@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from config import settings
 from exchange.client import create_exchange, get_available_symbols, get_ohlcv
-from agents.orchestrator import STRATEGY_MAP, orchestrator, pick_auto_strategy_for_ohlcv
+from agents.orchestrator import STRATEGY_MAP, _estimate_long_upside_metrics, orchestrator, pick_auto_strategy_for_ohlcv
 from database import get_db
 from models import AgentState
 from routers.settings import get_available_budget
@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
 class DeployRequest(BaseModel):
     budget: float
+    quote_currency: str = "MXN"
     max_agents: int = 3
     min_score: float = 30.0
     rotation_enabled: bool = True
@@ -126,6 +127,10 @@ async def _analyze_pair(exchange, symbol: str) -> dict:
         action = "WAITING"
         confidence = 0.0
         eligible = False
+        rank_score = 0.0
+        expected_roi_pct = 0.0
+        reward_risk_ratio = 0.0
+        trend_strength_pct = 0.0
 
         strategy_cls = STRATEGY_MAP.get(strategy)
         if strategy_cls:
@@ -146,24 +151,43 @@ async def _analyze_pair(exchange, symbol: str) -> dict:
                 eligible = signal == "buy" and confidence >= 0.15
                 reasons.append(result.reasoning)
 
+                upside_metrics = _estimate_long_upside_metrics(signal_ohlcv, result.indicators, confidence)
+                expected_roi_pct = float(upside_metrics.get("expected_roi_pct", 0.0) or 0.0)
+                reward_risk_ratio = float(upside_metrics.get("reward_risk_ratio", 0.0) or 0.0)
+                trend_strength_pct = float(upside_metrics.get("trend_strength_pct", 0.0) or 0.0)
+
                 if signal == "buy":
                     score += 18.0 + confidence * 22.0
                     if result.indicators.get("in_uptrend"):
                         score += 3.0
                     if result.indicators.get("volume_ok"):
                         score += 2.0
+                    score += min(14.0, expected_roi_pct * 3.5)
+                    score += min(8.0, max(0.0, reward_risk_ratio - 1.0) * 4.0)
+                    rank_score = score + min(12.0, expected_roi_pct * 2.5) + min(8.0, max(0.0, trend_strength_pct) * 2.0)
                 else:
                     score = min(score, 24.0 if signal == "hold" else 10.0)
+                    rank_score = score
 
+                eligible = eligible and expected_roi_pct >= 1.0 and reward_risk_ratio >= 1.1
                 if not eligible:
                     score = min(score, 24.0)
+                    rank_score = min(rank_score, 24.0)
 
+        if signal == "buy" and expected_roi_pct > 0:
+            reasons.append(f"est. upside ~{expected_roi_pct:.1f}%")
+            reasons.append(f"reward/risk {reward_risk_ratio:.1f}x")
         reasons.append(strategy_reason)
         score = max(0.0, min(100.0, score))
+        rank_score = max(0.0, min(120.0, rank_score or score))
 
         return {
             "symbol": symbol,
             "score": round(score, 1),
+            "rank_score": round(rank_score, 1),
+            "expected_roi_pct": round(expected_roi_pct, 2),
+            "reward_risk_ratio": round(reward_risk_ratio, 2),
+            "trend_strength_pct": round(trend_strength_pct, 2),
             "strategy": strategy,
             "params": params,
             "reason": " · ".join(reasons),
@@ -176,34 +200,55 @@ async def _analyze_pair(exchange, symbol: str) -> dict:
             "ma_bullish": ma_bullish,
         }
     except Exception as e:
-        return {"symbol": symbol, "score": 0, "strategy": "ma_crossover", "reason": f"error: {e}"}
+        return {
+            "symbol": symbol,
+            "score": 0,
+            "rank_score": 0,
+            "expected_roi_pct": 0.0,
+            "reward_risk_ratio": 0.0,
+            "trend_strength_pct": 0.0,
+            "strategy": "ma_crossover",
+            "reason": f"error: {e}",
+        }
 
 
 @router.post("/analyze")
-async def analyze_market(max_pairs: int = 10):
-    """Analyze all available pairs and return scores without deploying."""
+async def analyze_market(max_pairs: int = 10, quote_currency: str = "MXN"):
+    """Analyze all available pairs for the selected quote currency and return scores without deploying."""
+    normalized_quote = (quote_currency or "MXN").upper()
     exchange = create_exchange()
-    symbols = await get_available_symbols("MXN")
+    symbols = await get_available_symbols(normalized_quote)
     results = await asyncio.gather(*[_analyze_pair(exchange, s) for s in symbols])
-    sorted_results = sorted(results, key=lambda x: x["score"], reverse=True)
-    return {"pairs": sorted_results[:max_pairs]}
+    sorted_results = sorted(results, key=lambda x: x.get("rank_score", x["score"]), reverse=True)
+    return {
+        "quote_currency": normalized_quote,
+        "total_markets": len(sorted_results),
+        "pairs": sorted_results[:max_pairs],
+    }
 
 
 @router.post("/deploy")
 async def deploy_portfolio(req: DeployRequest, db: AsyncSession = Depends(get_db)):
     """Analyze market, pick best pairs, create + start agents."""
-    if req.budget < 10:
-        raise HTTPException(status_code=400, detail="Minimum budget is $10 MXN")
+    quote_currency = (req.quote_currency or "MXN").upper()
+    min_budget = 0.0001 if quote_currency == "BTC" else 10.0
+    if req.budget < min_budget:
+        display_min_budget = f"{min_budget:.4f}" if quote_currency == "BTC" else f"{min_budget:.0f}"
+        raise HTTPException(status_code=400, detail=f"Minimum budget is {display_min_budget} {quote_currency}")
     if req.max_agents < 1 or req.max_agents > 6:
         raise HTTPException(status_code=400, detail="max_agents must be 1–6")
     if req.rotation_interval_minutes < 1 or req.rotation_interval_minutes > 5:
         raise HTTPException(status_code=400, detail="rotation_interval_minutes must be 1–5")
 
-    available = await get_available_budget(db)
+    available = await get_available_budget(db, quote_currency)
     if req.budget > available:
+        precision = 8 if quote_currency == 'BTC' else 2
         raise HTTPException(
             status_code=400,
-            detail=f"Insufficient wallet balance. Requested ${req.budget:.2f} MXN but only ${available:.2f} MXN available.",
+            detail=(
+                f"Insufficient wallet balance. Requested {req.budget:.{precision}f} {quote_currency} "
+                f"but only {available:.{precision}f} {quote_currency} available."
+            ),
         )
 
     active_symbols_result = await db.execute(
@@ -212,7 +257,7 @@ async def deploy_portfolio(req: DeployRequest, db: AsyncSession = Depends(get_db
     active_symbols = {row[0] for row in active_symbols_result.all() if row[0]}
 
     exchange = create_exchange()
-    symbols = await get_available_symbols("MXN")
+    symbols = await get_available_symbols(quote_currency)
     symbols = [symbol for symbol in symbols if symbol not in active_symbols]
 
     if not symbols:
@@ -224,9 +269,9 @@ async def deploy_portfolio(req: DeployRequest, db: AsyncSession = Depends(get_db
     results = await asyncio.gather(*[_analyze_pair(exchange, s) for s in symbols])
     scored = [
         r for r in results
-        if r["score"] >= req.min_score and r.get("eligible") and r.get("signal") == "buy"
+        if r.get("rank_score", r["score"]) >= req.min_score and r.get("eligible") and r.get("signal") == "buy"
     ]
-    scored = sorted(scored, key=lambda x: x["score"], reverse=True)[: req.max_agents]
+    scored = sorted(scored, key=lambda x: x.get("rank_score", x["score"]), reverse=True)[: req.max_agents]
 
     if not scored:
         raise HTTPException(
@@ -237,15 +282,17 @@ async def deploy_portfolio(req: DeployRequest, db: AsyncSession = Depends(get_db
             ),
         )
 
-    total_score = sum(r["score"] for r in scored)
+    total_score = sum(r.get("rank_score", r["score"]) for r in scored)
     agent_ids = []
     pairs_out = []
 
+    precision = 8 if quote_currency == "BTC" else 2
+
     for pair in scored:
-        weight = pair["score"] / total_score
-        allocated = round(req.budget * weight, 2)
-        if allocated < 10:
-            allocated = 10.0
+        weight = pair.get("rank_score", pair["score"]) / total_score
+        allocated = round(req.budget * weight, precision)
+        if allocated < min_budget:
+            allocated = min_budget
 
         params = pair.get("params", {})
 
@@ -255,6 +302,7 @@ async def deploy_portfolio(req: DeployRequest, db: AsyncSession = Depends(get_db
                 params=params,
                 budget=allocated,
                 symbol=pair["symbol"],
+                quote_currency=quote_currency,
                 rotation_enabled=req.rotation_enabled,
                 aggressive_rotation=req.aggressive_rotation,
                 rotation_interval_minutes=req.rotation_interval_minutes,
@@ -279,6 +327,7 @@ async def deploy_portfolio(req: DeployRequest, db: AsyncSession = Depends(get_db
 
     return {
         "total_budget": req.budget,
+        "quote_currency": quote_currency,
         "pairs": pairs_out,
         "agent_ids": agent_ids,
     }
