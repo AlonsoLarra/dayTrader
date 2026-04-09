@@ -38,8 +38,22 @@ class Settings(BaseSettings):
         return [email.strip().lower() for email in self.ALLOWED_EMAILS.split(",") if email.strip()]
 
     @property
+    def database_url_async(self) -> str:
+        """Normalize provider URLs for SQLAlchemy async engines.
+
+        Railway/Postgres plugins typically provide `postgresql://...` URLs,
+        but `create_async_engine` requires an async driver such as `asyncpg`.
+        """
+        url = self.DATABASE_URL.strip()
+        if url.startswith("postgres://"):
+            return "postgresql+asyncpg://" + url[len("postgres://"):]
+        if url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
+            return "postgresql+asyncpg://" + url[len("postgresql://"):]
+        return url
+
+    @property
     def is_postgres(self) -> bool:
-        return self.DATABASE_URL.startswith("postgresql")
+        return self.database_url_async.startswith("postgresql+asyncpg://")
 
 
 settings = Settings()

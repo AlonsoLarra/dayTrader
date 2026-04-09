@@ -4,9 +4,11 @@ from sqlalchemy import text
 from config import settings
 
 # PostgreSQL needs connection pooling; SQLite doesn't support it
+DATABASE_URL = settings.database_url_async
+
 if settings.is_postgres:
     engine = create_async_engine(
-        settings.DATABASE_URL,
+        DATABASE_URL,
         echo=False,
         pool_size=10,
         max_overflow=5,
@@ -14,7 +16,7 @@ if settings.is_postgres:
         pool_recycle=3600,
     )
 else:
-    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+    engine = create_async_engine(DATABASE_URL, echo=False)
 
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
