@@ -203,7 +203,7 @@ function MarketScanner({ pairs, loading }: { pairs: PairScan[]; loading: boolean
           {pairs.map((p, i) => {
             const trackedCount = p.tracked_count ?? p.tracked_by?.length ?? 0;
             return (
-              <div key={p.symbol} className="rounded-lg border border-gray-700 bg-gray-900/50 p-3 space-y-2">
+              <div key={p.symbol} className="rounded-lg border border-gray-700 bg-gray-900/50 p-3 space-y-2 min-h-[80px]">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="flex items-center gap-2">
@@ -351,7 +351,7 @@ function BacktestSection() {
               className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-xs" /></div>}
         </div>
         <button type="submit" disabled={loading}
-          className="mt-3 px-5 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 text-white rounded text-xs font-medium">
+          className="mt-3 px-5 py-2.5 min-h-[44px] bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 text-white rounded text-sm font-medium w-full sm:w-auto">
           {loading ? 'Running…' : 'Run Backtest'}
         </button>
       </form>
@@ -431,13 +431,13 @@ export function BacktestPanel() {
       <div className="flex gap-2 border-b border-gray-700 pb-2">
         <button
           onClick={() => setTab('intelligence')}
-          className={`text-sm px-4 py-1.5 rounded-t font-medium transition-colors ${tab === 'intelligence' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}
+          className={`text-sm px-4 py-2.5 min-h-[44px] rounded-t font-medium transition-colors ${tab === 'intelligence' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}
         >
           Live Intelligence
         </button>
         <button
           onClick={() => setTab('backtest')}
-          className={`text-sm px-4 py-1.5 rounded-t font-medium transition-colors ${tab === 'backtest' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}
+          className={`text-sm px-4 py-2.5 min-h-[44px] rounded-t font-medium transition-colors ${tab === 'backtest' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}
         >
           Historical Backtest
         </button>

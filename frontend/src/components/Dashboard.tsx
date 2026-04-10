@@ -70,7 +70,7 @@ export function Dashboard({ lastWsMessage }: Props) {
       {/* Portfolio overview */}
       <div className="bg-gray-800 rounded-lg border border-gray-700 p-5">
         <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Portfolio Overview</div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
           <div>
             <div className="text-xs text-gray-500 mb-1">Realized P&amp;L</div>
             <div className={`text-2xl font-bold tabular-nums ${pnlPositive ? 'text-green-400' : 'text-red-400'}`}>
@@ -122,7 +122,7 @@ export function Dashboard({ lastWsMessage }: Props) {
           <h2 className="text-sm font-semibold text-gray-200 uppercase tracking-wide">Bots</h2>
           <button
             onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium"
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium min-h-[44px]"
           >
             + New Bot
           </button>
@@ -132,7 +132,7 @@ export function Dashboard({ lastWsMessage }: Props) {
             No bots yet. Use <span className="text-blue-400 font-medium">Auto-Trade</span> in the header or click <span className="text-blue-400 font-medium">+ New Bot</span>.
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-3 md:gap-4 md:grid-cols-2 xl:grid-cols-3">
             {agents.map(agent => (
               <AgentCard key={agent.agent_id} agent={agent} onUpdate={refresh} />
             ))}

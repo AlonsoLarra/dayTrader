@@ -26,7 +26,7 @@ export function TradeLog({ trades }: Props) {
             <button
               key={s}
               onClick={() => setFilterSide(s)}
-              className={clsx('px-3 py-1 rounded text-sm', {
+              className={clsx('px-3 py-2 min-h-[40px] rounded text-sm', {
                 'bg-blue-600 text-white': filterSide === s,
                 'bg-gray-700 text-gray-300 hover:bg-gray-600': filterSide !== s,
               })}
@@ -41,7 +41,7 @@ export function TradeLog({ trades }: Props) {
             <button
               key={s}
               onClick={() => setFilterStrategy(s)}
-              className={clsx('px-3 py-1 rounded text-sm', {
+              className={clsx('px-3 py-2 min-h-[40px] rounded text-sm', {
                 'bg-blue-600 text-white': filterStrategy === s,
                 'bg-gray-700 text-gray-300 hover:bg-gray-600': filterStrategy !== s,
               })}
@@ -52,19 +52,19 @@ export function TradeLog({ trades }: Props) {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+        <table className="text-sm min-w-[600px] w-full">
           <thead>
             <tr className="text-gray-400 text-left border-b border-gray-700">
               <th className="pb-2 pr-4">Time</th>
-              <th className="pb-2 pr-4">Agent</th>
+              <th className="pb-2 pr-4 hidden sm:table-cell">Agent</th>
               <th className="pb-2 pr-4">Symbol</th>
               <th className="pb-2 pr-4">Side</th>
-              <th className="pb-2 pr-4">Amount</th>
+              <th className="pb-2 pr-4 hidden sm:table-cell">Amount</th>
               <th className="pb-2 pr-4">Price</th>
               <th className="pb-2 pr-4">P&amp;L</th>
-              <th className="pb-2 pr-4">Mode</th>
-              <th className="pb-2">Strategy</th>
+              <th className="pb-2 pr-4 hidden md:table-cell">Mode</th>
+              <th className="pb-2 hidden md:table-cell">Strategy</th>
             </tr>
           </thead>
           <tbody>
@@ -83,12 +83,12 @@ export function TradeLog({ trades }: Props) {
                     'bg-red-900/10': trade.pnl !== null && trade.pnl < 0,
                   })}
                 >
-                  <td className="py-2 pr-4 font-mono text-xs text-gray-300">
+                  <td className="py-2.5 pr-4 font-mono text-xs text-gray-300 whitespace-nowrap">
                     {new Date(trade.timestamp).toLocaleString()}
                   </td>
-                  <td className="py-2 pr-4 font-mono text-xs text-gray-300">{trade.agent_id}</td>
-                  <td className="py-2 pr-4 text-gray-200">{trade.symbol}</td>
-                  <td className="py-2 pr-4">
+                  <td className="py-2.5 pr-4 font-mono text-xs text-gray-300 hidden sm:table-cell">{trade.agent_id}</td>
+                  <td className="py-2.5 pr-4 text-gray-200 whitespace-nowrap">{trade.symbol}</td>
+                  <td className="py-2.5 pr-4">
                     <span
                       className={clsx('px-2 py-0.5 rounded text-xs font-bold', {
                         'bg-green-800 text-green-300': trade.side === 'buy',
@@ -98,10 +98,10 @@ export function TradeLog({ trades }: Props) {
                       {trade.side.toUpperCase()}
                     </span>
                   </td>
-                  <td className="py-2 pr-4 font-mono text-gray-300">{trade.amount.toFixed(8)}</td>
-                  <td className="py-2 pr-4 font-mono text-gray-300">${trade.price.toFixed(2)}</td>
+                  <td className="py-2.5 pr-4 font-mono text-gray-300 hidden sm:table-cell">{trade.amount.toFixed(8)}</td>
+                  <td className="py-2.5 pr-4 font-mono text-gray-300 whitespace-nowrap">${trade.price.toFixed(2)}</td>
                   <td
-                    className={clsx('py-2 pr-4 font-mono', {
+                    className={clsx('py-2.5 pr-4 font-mono whitespace-nowrap', {
                       'text-green-400': trade.pnl !== null && trade.pnl > 0,
                       'text-red-400': trade.pnl !== null && trade.pnl < 0,
                       'text-gray-500': trade.pnl === null,
@@ -109,7 +109,7 @@ export function TradeLog({ trades }: Props) {
                   >
                     {trade.pnl !== null ? `$${trade.pnl.toFixed(2)}` : '—'}
                   </td>
-                  <td className="py-2 pr-4">
+                  <td className="py-2.5 pr-4 hidden md:table-cell">
                     <span
                       className={clsx('text-xs px-2 py-0.5 rounded', {
                         'bg-blue-900 text-blue-300': trade.mode === 'paper',
@@ -119,7 +119,7 @@ export function TradeLog({ trades }: Props) {
                       {trade.mode}
                     </span>
                   </td>
-                  <td className="py-2 text-xs text-gray-400">{trade.strategy}</td>
+                  <td className="py-2.5 text-xs text-gray-400 hidden md:table-cell">{trade.strategy}</td>
                 </tr>
               ))
             )}
