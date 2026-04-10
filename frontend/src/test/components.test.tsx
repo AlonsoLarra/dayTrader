@@ -8,6 +8,7 @@ import { AutoTradeModal } from '../components/AutoTradeModal';
 import { WalletHeader } from '../components/WalletHeader';
 import { AgentCard } from '../components/AgentCard';
 import { BacktestPanel } from '../components/BacktestPanel';
+import { PositionsPanel } from '../components/PositionsPanel';
 
 // vi.mock is hoisted — use vi.fn() inside the factory, not external variables
 vi.mock('../api/client', () => ({
@@ -30,6 +31,8 @@ vi.mock('../api/client', () => ({
   deleteAgent: vi.fn(),
   getStrategyReasoning: vi.fn(),
   getMarketScan: vi.fn(),
+  getPositions: vi.fn(),
+  forceSell: vi.fn(),
   runBacktest: vi.fn(),
 }));
 
@@ -312,6 +315,37 @@ describe('AutoTradeModal', () => {
 });
 
 // ── WalletHeader tests ────────────────────────────────────────────────────────
+
+describe('PositionsPanel', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('shows current position value separately from the unit price', async () => {
+    (apiMock.getPositions as ReturnType<typeof vi.fn>).mockResolvedValue({
+      positions: [
+        {
+          agent_id: 'a1',
+          symbol: 'FET/USD',
+          strategy: 'trend_rsi',
+          side: 'buy',
+          amount: 100,
+          entry_price: 0.25,
+          current_price: 0.252,
+          unrealized_pnl: 0.2,
+          pnl_pct: 0.8,
+          proceeds_if_sold: 25.2,
+          cost_basis: 25.0,
+        },
+      ],
+    });
+
+    render(<PositionsPanel />);
+
+    await waitFor(() => expect(screen.getByText(/Current Value/i)).toBeInTheDocument());
+    expect(screen.getByText('25.20 USD')).toBeInTheDocument();
+    expect(screen.getByText(/@ 0.25 USD each/i)).toBeInTheDocument();
+    expect(screen.getByText('100.00 FET')).toBeInTheDocument();
+  });
+});
 
 describe('App auth gate', () => {
   beforeEach(() => {

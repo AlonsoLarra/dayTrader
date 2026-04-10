@@ -13,6 +13,10 @@ function getQuoteCurrency(symbol: string) {
   return (symbol.includes('/') ? symbol.split('/')[1] : 'MXN').toUpperCase();
 }
 
+function getBaseAsset(symbol: string) {
+  return (symbol.includes('/') ? symbol.split('/')[0] : symbol).toUpperCase();
+}
+
 function formatQuoteAmount(value: number, quoteCurrency = 'MXN') {
   const normalizedQuote = (quoteCurrency || 'MXN').toUpperCase();
   const digits = normalizedQuote === 'BTC' ? 6 : 2;
@@ -21,6 +25,14 @@ function formatQuoteAmount(value: number, quoteCurrency = 'MXN') {
     maximumFractionDigits: digits,
   });
   return normalizedQuote === 'MXN' ? `$${formatted} MXN` : `${formatted} ${normalizedQuote}`;
+}
+
+function formatAssetAmount(value: number, asset = '') {
+  const formatted = Number(value || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  });
+  return `${formatted} ${asset}`.trim();
 }
 
 export function PositionsPanel({ onSold, refreshTrigger }: Props) {
@@ -106,6 +118,9 @@ export function PositionsPanel({ onSold, refreshTrigger }: Props) {
           const isConfirming = confirm === pos.agent_id;
           const isSelling = selling === pos.agent_id;
           const quoteCurrency = getQuoteCurrency(pos.symbol);
+          const baseAsset = getBaseAsset(pos.symbol);
+          const entryValue = pos.cost_basis ?? (pos.entry_price * pos.amount);
+          const currentValue = pos.proceeds_if_sold ?? (pos.current_price != null ? pos.current_price * pos.amount : null);
 
           return (
             <div key={pos.agent_id} className="rounded-lg border border-gray-700 p-3 bg-gray-900">
@@ -123,18 +138,22 @@ export function PositionsPanel({ onSold, refreshTrigger }: Props) {
                 )}
               </div>
 
-              {/* Price info grid */}
+              {/* Position info grid */}
               <div className="grid grid-cols-3 gap-3 mb-3">
                 <div>
-                  <div className="text-xs text-gray-500 mb-0.5">Entry</div>
-                  <div className="text-sm text-white font-mono">{formatQuoteAmount(pos.entry_price, quoteCurrency)}</div>
+                  <div className="text-xs text-gray-500 mb-0.5">Entry Value</div>
+                  <div className="text-sm text-white font-mono">{formatQuoteAmount(entryValue, quoteCurrency)}</div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">@ {formatQuoteAmount(pos.entry_price, quoteCurrency)} each</div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500 mb-0.5">Current</div>
+                  <div className="text-xs text-gray-500 mb-0.5">Current Value</div>
                   <div className="text-sm text-white font-mono">
-                    {pos.current_price != null
-                      ? formatQuoteAmount(pos.current_price, quoteCurrency)
+                    {currentValue != null
+                      ? formatQuoteAmount(currentValue, quoteCurrency)
                       : '—'}
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">
+                    {pos.current_price != null ? `@ ${formatQuoteAmount(pos.current_price, quoteCurrency)} each` : 'Live price unavailable'}
                   </div>
                 </div>
                 <div>
@@ -152,15 +171,13 @@ export function PositionsPanel({ onSold, refreshTrigger }: Props) {
                 </div>
               </div>
 
-              {/* Proceeds info */}
+              {/* Position size info */}
               <div className="flex items-center justify-between bg-gray-800 rounded px-3 py-2 mb-3">
                 <div className="text-xs text-gray-400">
-                  If you sell now you'd receive:
+                  Position size
                 </div>
                 <div className="text-sm font-bold text-white">
-                  {pos.proceeds_if_sold != null
-                    ? formatQuoteAmount(pos.proceeds_if_sold, quoteCurrency)
-                    : '—'}
+                  {formatAssetAmount(pos.amount, baseAsset)}
                 </div>
               </div>
 
