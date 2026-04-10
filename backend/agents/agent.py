@@ -439,6 +439,7 @@ class TradingAgent:
                     fill_price = order.get("price", current_price)
                     fee = order.get("fee", {}).get("cost", 0.0)
 
+                    trade_symbol = self.symbol  # capture before potential rotation
                     pnl = None
                     if result.signal == Signal.SELL and self.open_position:
                         # P&L = proceeds - fee - original cost (including buy fee)
@@ -519,7 +520,7 @@ class TradingAgent:
                                 "type": "trade",
                                 "payload": {
                                     "agent_id": self.agent_id,
-                                    "symbol": self.symbol,
+                                    "symbol": trade_symbol,
                                     "side": result.signal.value,
                                     "amount": amount,
                                     "price": fill_price,
@@ -533,8 +534,8 @@ class TradingAgent:
                     # Persist trade record
                     trade = Trade(
                         agent_id=self.agent_id,
-                        symbol=self.symbol,
-                        quote_currency=self.symbol.split("/")[-1] if "/" in self.symbol else "MXN",
+                        symbol=trade_symbol,
+                        quote_currency=trade_symbol.split("/")[-1] if "/" in trade_symbol else "MXN",
                         side=result.signal.value,
                         amount=amount,
                         price=fill_price,
@@ -550,7 +551,7 @@ class TradingAgent:
                     await self._log(
                         session,
                         "trade",
-                        f"Executed {result.signal.value} {amount:.8f} {self.symbol} @ {fill_price:.2f} | fee: ${fee:.2f} MXN",
+                        f"Executed {result.signal.value} {amount:.8f} {trade_symbol} @ {fill_price:.2f} | fee: ${fee:.2f} MXN",
                         decision=result.signal.value,
                         reasoning=result.reasoning,
                     )
