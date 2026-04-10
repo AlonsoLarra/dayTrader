@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { getPrices, getPriceOhlcv, type PriceTick } from '../api/client';
 
 interface OhlcvCandle {
@@ -21,6 +22,7 @@ export function PriceBoard() {
   const [selected, setSelected] = useState('BTC/MXN');
   const [ohlcv, setOhlcv] = useState<OhlcvCandle[]>([]);
   const [loadingChart, setLoadingChart] = useState(false);
+  const [showChart, setShowChart] = useState(false);
 
   const fetchPrices = useCallback(async () => {
     try {
@@ -87,8 +89,16 @@ export function PriceBoard() {
         })}
       </div>
 
-      {/* OHLCV chart */}
-      <div>
+      {/* OHLCV chart – hidden on mobile until toggled */}
+      <div className="md:block">
+        <button
+          onClick={() => setShowChart(v => !v)}
+          className="flex md:hidden items-center gap-1 text-xs text-gray-400 hover:text-gray-200 mb-1 transition-colors"
+        >
+          {showChart ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          {showChart ? 'Hide chart' : `Show chart · ${selected}`}
+        </button>
+        <div className={showChart ? 'block' : 'hidden md:block'}>
         <div className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-2">
           {selected} · 1h candles (close)
         </div>
@@ -132,6 +142,7 @@ export function PriceBoard() {
             </LineChart>
           </ResponsiveContainer>
         )}
+        </div>
       </div>
     </div>
   );

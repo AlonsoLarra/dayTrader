@@ -144,52 +144,52 @@ export function AgentCard({ agent, onUpdate }: Props) {
       </div>
 
       {/* Row 2: action buttons right-aligned */}
-      <div className="flex items-center justify-end gap-1 mb-3">
+      <div className="flex items-center justify-end gap-1.5 mb-3">
         {agent.status !== 'killed' && agent.status !== 'running' && (
           <button
             onClick={handleStart}
             disabled={loading}
-            className="p-1.5 rounded bg-green-700 hover:bg-green-600 text-white disabled:opacity-50"
+            className="h-9 w-9 flex items-center justify-center rounded bg-green-700 hover:bg-green-600 text-white disabled:opacity-50"
             title="Activate bot"
           >
-            <Play size={13} />
+            <Play size={15} />
           </button>
         )}
         {agent.status === 'running' && (
           <button
             onClick={handleStop}
             disabled={loading}
-            className="p-1.5 rounded bg-amber-700 hover:bg-amber-600 text-white disabled:opacity-50"
+            className="h-9 w-9 flex items-center justify-center rounded bg-amber-700 hover:bg-amber-600 text-white disabled:opacity-50"
             title="Pause bot"
           >
-            <Square size={13} />
+            <Square size={15} />
           </button>
         )}
         {agent.status !== 'killed' && (
           <button
             onClick={handleKill}
             disabled={loading}
-            className="p-1.5 rounded bg-red-800 hover:bg-red-700 text-white disabled:opacity-50"
+            className="h-9 w-9 flex items-center justify-center rounded bg-red-800 hover:bg-red-700 text-white disabled:opacity-50"
             title="Close bot"
           >
-            <Skull size={13} />
+            <Skull size={15} />
           </button>
         )}
         {(agent.status === 'killed' || agent.status === 'stopped') && (
           <button
             onClick={handleDelete}
             disabled={loading}
-            className="p-1.5 rounded bg-gray-700 hover:bg-red-800 text-gray-400 hover:text-white disabled:opacity-50"
+            className="h-9 w-9 flex items-center justify-center rounded bg-gray-700 hover:bg-red-800 text-gray-400 hover:text-white disabled:opacity-50"
             title="Remove bot"
           >
-            <Trash2 size={13} />
+            <Trash2 size={15} />
           </button>
         )}
         <button
           onClick={toggleExpand}
-          className="p-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-400"
+          className="h-9 w-9 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-gray-400"
         >
-          {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
         </button>
       </div>
 

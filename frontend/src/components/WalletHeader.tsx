@@ -122,8 +122,8 @@ export function WalletHeader({ onAvailableChange }: Props) {
         <span className={`text-xs font-medium ${paperMode ? "text-amber-400" : "text-orange-400"}`}>
           {paperMode ? "PAPER" : "LIVE"}
         </span>
-        <div className="w-px h-3.5 bg-gray-600 mx-0.5" />
-        <span className="text-xs text-gray-400">Available</span>
+        <div className="hidden sm:block w-px h-3.5 bg-gray-600 mx-0.5" />
+        <span className="hidden sm:inline text-xs text-gray-400">Available</span>
         <span className="text-sm font-bold text-white tabular-nums">
           {available.toLocaleString("en-US", {
             minimumFractionDigits: selectedQuote === 'BTC' ? 6 : 2,

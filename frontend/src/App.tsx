@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, Activity, FileText, BarChart2, LogOut } from 'lucide-react';
+import { TrendingUp, Activity, FileText, BarChart2, LogOut, Menu, X } from 'lucide-react';
 import clsx from 'clsx';
 import { Dashboard } from './components/Dashboard';
 import { BacktestPanel } from './components/BacktestPanel';
@@ -22,6 +22,7 @@ export default function App() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [available, setAvailable] = useState<number>(0);
   const [showAutoTrade, setShowAutoTrade] = useState(false);
+  const [showDrawer, setShowDrawer] = useState(false);
   const { lastMessage } = useWebSocket(Boolean(token));
 
   // Listen for 401 logout signal from axios interceptor
@@ -87,8 +88,28 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      <header className="bg-gray-800 border-b border-gray-700 px-6">
-        <div className="flex items-center justify-between h-14">
+      {/* ── Header ── */}
+      <header className="bg-gray-800 border-b border-gray-700 sticky top-0 z-30">
+        {/* Mobile header */}
+        <div className="flex md:hidden items-center justify-between h-14 px-4">
+          <div className="flex items-center gap-2">
+            <TrendingUp size={18} className="text-blue-400" />
+            <span className="text-sm font-bold tracking-tight">dayTrader</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <WalletHeader onAvailableChange={setAvailable} />
+            <button
+              onClick={() => setShowDrawer(true)}
+              className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              aria-label="Open menu"
+            >
+              <Menu size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* Desktop header */}
+        <div className="hidden md:flex items-center justify-between h-14 px-6">
           <div className="flex items-center gap-0 h-full">
             <div className="flex items-center gap-2 pr-6 border-r border-gray-700 mr-2 h-full">
               <TrendingUp size={18} className="text-blue-400" />
@@ -113,14 +134,12 @@ export default function App() {
 
           <div className="flex items-center gap-3">
             <WalletHeader onAvailableChange={setAvailable} />
-
             <button
               onClick={() => setShowAutoTrade(true)}
               className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg font-medium transition-colors"
             >
               ⚡ Auto-Trade
             </button>
-
             <div className="w-px h-6 bg-gray-700" />
             <KillSwitch hasRunningAgents={hasRunningAgents} onKilled={() => { refreshAll(); refreshWallet(); }} />
             <div className="w-px h-6 bg-gray-700" />
@@ -135,9 +154,10 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto p-6">
+      {/* ── Main content ── */}
+      <main className="max-w-7xl mx-auto p-4 md:p-6 pb-24 md:pb-6">
         {tab === 'dashboard' && (
-          <div className="space-y-6">
+          <div className="space-y-4 md:space-y-6">
             <PriceBoard />
             <Dashboard lastWsMessage={lastMessage} />
           </div>
@@ -145,6 +165,68 @@ export default function App() {
         {tab === 'backtest' && <BacktestPanel />}
         {tab === 'logs' && <TradeLog trades={trades} />}
       </main>
+
+      {/* ── Mobile bottom nav ── */}
+      <nav
+        className="fixed bottom-0 inset-x-0 z-30 md:hidden bg-gray-800 border-t border-gray-700 flex"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={clsx(
+              'flex-1 flex flex-col items-center justify-center gap-1 py-2 min-h-[56px] transition-colors',
+              tab === t.id ? 'text-blue-400' : 'text-gray-500'
+            )}
+          >
+            {t.icon}
+            <span className="text-[10px] font-medium">{t.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      {/* ── Mobile drawer ── */}
+      {showDrawer && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowDrawer(false)}
+          />
+          <div className="absolute right-0 top-0 bottom-0 w-72 bg-gray-800 border-l border-gray-700 flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between p-4 border-b border-gray-700">
+              <span className="text-sm font-semibold text-white">Menu</span>
+              <button
+                onClick={() => setShowDrawer(false)}
+                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex flex-col gap-3 p-4">
+              <button
+                onClick={() => { setShowAutoTrade(true); setShowDrawer(false); }}
+                className="flex items-center gap-3 px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors"
+              >
+                ⚡ Auto-Trade
+              </button>
+              <KillSwitch
+                hasRunningAgents={hasRunningAgents}
+                onKilled={() => { refreshAll(); refreshWallet(); setShowDrawer(false); }}
+              />
+            </div>
+            <div className="mt-auto p-4 border-t border-gray-700">
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-3 px-4 py-3 w-full text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                <LogOut size={16} />
+                <span className="text-sm">Sign Out</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showAutoTrade && (
         <AutoTradeModal
