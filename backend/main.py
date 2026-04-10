@@ -1,15 +1,20 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from jose import JWTError, jwt
+from sqlalchemy import select
 
 from config import settings
-from database import init_db
+from database import init_db, AsyncSessionLocal
+from models import AgentState
 from routers import agents, trades, backtest, ws, prices, settings as settings_router, portfolio
 from routers import strategy as strategy_router
 from routers import auth as auth_router
-from agents.orchestrator import orchestrator
+from agents.orchestrator import orchestrator, assess_market_opportunity
+from exchange.client import create_exchange, get_available_symbols
 from routers.ws import manager
 
 import os
@@ -18,13 +23,131 @@ _JWT_ALGORITHM = "HS256"
 
 _PUBLIC_PATHS = {"/api/health", "/api/auth/login", "/api/auth/check-email", "/api/auth/set-password"}
 
+_log = logging.getLogger("auto_watcher")
+
+AUTO_WATCHER_INTERVAL_SECONDS = 60
+AUTO_WATCHER_MIN_SCORE = 30.0
+AUTO_WATCHER_MAX_AGENTS = 3
+
+
+async def _auto_trade_watcher():
+    """Background task: when no bots are running, scan the market every 60s and auto-deploy."""
+    # Small initial delay so the server finishes starting before the first scan
+    await asyncio.sleep(30)
+
+    while True:
+        try:
+            async with AsyncSessionLocal() as db:
+                # Only act when zero bots are currently running
+                result = await db.execute(
+                    select(AgentState).where(AgentState.status == "running")
+                )
+                if result.scalars().first():
+                    await asyncio.sleep(AUTO_WATCHER_INTERVAL_SECONDS)
+                    continue
+
+                quote_currency = (
+                    settings.TRADING_PAIR.split("/")[-1]
+                    if "/" in settings.TRADING_PAIR
+                    else "MXN"
+                ).upper()
+                min_budget = 0.0001 if quote_currency == "BTC" else 10.0
+
+                # Lazy import to avoid circular dependency at module load time
+                from routers.settings import get_available_budget
+                available = await get_available_budget(db, quote_currency)
+                if available < min_budget:
+                    _log.debug("Auto-watcher: insufficient budget (%.4f %s), skipping", available, quote_currency)
+                    await asyncio.sleep(AUTO_WATCHER_INTERVAL_SECONDS)
+                    continue
+
+                # Exclude symbols already claimed by any non-killed bot
+                active_result = await db.execute(
+                    select(AgentState.symbol).where(AgentState.status != "killed")
+                )
+                active_symbols = {row[0] for row in active_result.all() if row[0]}
+
+                symbols = await get_available_symbols(quote_currency)
+                symbols = [s for s in symbols if s not in active_symbols]
+                if not symbols:
+                    await asyncio.sleep(AUTO_WATCHER_INTERVAL_SECONDS)
+                    continue
+
+                exchange = create_exchange()
+                market_results = await asyncio.gather(
+                    *[assess_market_opportunity(exchange, s) for s in symbols]
+                )
+
+                scored = [
+                    r for r in market_results
+                    if r.get("eligible")
+                    and r.get("rank_score", r.get("score", 0.0)) >= AUTO_WATCHER_MIN_SCORE
+                ]
+                scored = sorted(
+                    scored,
+                    key=lambda x: x.get("rank_score", x.get("score", 0.0)),
+                    reverse=True,
+                )[:AUTO_WATCHER_MAX_AGENTS]
+
+                if not scored:
+                    _log.info("Auto-watcher: no eligible setups right now, rechecking in %ds", AUTO_WATCHER_INTERVAL_SECONDS)
+                    await asyncio.sleep(AUTO_WATCHER_INTERVAL_SECONDS)
+                    continue
+
+                total_score = sum(r.get("rank_score", r.get("score", 0.0)) for r in scored)
+                precision = 8 if quote_currency == "BTC" else 2
+
+                deployed_any = False
+                for pair in scored:
+                    weight = pair.get("rank_score", pair.get("score", 0.0)) / total_score
+                    allocated = round(available * weight, precision)
+                    if allocated < min_budget:
+                        allocated = min_budget
+                    try:
+                        agent_id, _ = await orchestrator.create_agent(
+                            strategy_name=pair["strategy"],
+                            params=pair.get("params", {}),
+                            budget=allocated,
+                            symbol=pair["symbol"],
+                            quote_currency=quote_currency,
+                            rotation_enabled=True,
+                            aggressive_rotation=True,
+                            rotation_interval_minutes=1,
+                            min_rotation_score_delta=1.0,
+                        )
+                        await orchestrator.start_agent(agent_id)
+                        deployed_any = True
+                        _log.info(
+                            "Auto-watcher: deployed %s (agent %s, budget %.*f %s, score %.1f)",
+                            pair["symbol"], agent_id, precision, allocated, quote_currency,
+                            pair.get("rank_score", pair.get("score", 0.0)),
+                        )
+                    except Exception as exc:
+                        _log.warning("Auto-watcher: failed to deploy %s: %s", pair["symbol"], exc)
+
+                if not deployed_any:
+                    _log.warning("Auto-watcher: all deployments failed, will retry in %ds", AUTO_WATCHER_INTERVAL_SECONDS)
+
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            _log.error("Auto-watcher unexpected error: %s", exc, exc_info=True)
+
+        await asyncio.sleep(AUTO_WATCHER_INTERVAL_SECONDS)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     orchestrator.set_broadcaster(manager)
     await orchestrator.reload_from_db()
+    watcher_task = asyncio.create_task(_auto_trade_watcher())
     yield
+    watcher_task.cancel()
+    try:
+        await watcher_task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(title="dayTrader API", lifespan=lifespan)
