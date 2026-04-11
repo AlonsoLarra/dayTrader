@@ -3,6 +3,7 @@ import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from typing import Optional
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -42,7 +43,7 @@ async def _log_watcher_cycle(
     pairs_evaluated: int = 0,
     eligible_pairs: int = 0,
     agents_deployed: int = 0,
-    details: dict | None = None,
+    details: Optional[dict] = None,
 ) -> None:
     entry = AutoWatcherLog(
         timestamp=datetime.now(timezone.utc),
