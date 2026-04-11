@@ -137,19 +137,23 @@ export function AutoTradeModal({ available, onClose, onDeployed }: Props) {
     } catch (e: unknown) {
       const isNetworkError = e instanceof Error &&
         (e.message === 'Network Error' || e.message.toLowerCase().includes('network'));
+      const isTimeout = typeof e === 'object' && e !== null && 'code' in e &&
+        (e as { code?: string }).code === 'ECONNABORTED';
 
-      if (isNetworkError && retryCount < 1) {
+      if ((isNetworkError || isTimeout) && retryCount < 1) {
         await new Promise(r => setTimeout(r, 1500));
         return handleStart(retryCount + 1);
       }
 
       const msg = isNetworkError
         ? 'Connection lost. Check your signal and try again.'
-        : typeof e === 'object' && e !== null && 'response' in e
-          ? String((e as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? 'Failed')
-          : e instanceof Error ? e.message : 'Failed';
+        : isTimeout
+          ? 'Request timed out. The market scan is taking too long — try again in a moment.'
+          : typeof e === 'object' && e !== null && 'response' in e
+            ? String((e as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? 'Failed')
+            : e instanceof Error ? e.message : 'Failed';
       setError(msg);
-      setErrorIsNetwork(isNetworkError);
+      setErrorIsNetwork(isNetworkError || isTimeout);
       setStatus('idle');
     }
   }
@@ -401,7 +405,7 @@ export function AutoTradeModal({ available, onClose, onDeployed }: Props) {
                 Cancel
               </button>
               <button
-                onClick={handleStart}
+                onClick={() => handleStart()}
                 disabled={budget <= 0 || overBudget}
                 className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
               >
