@@ -405,7 +405,7 @@ export function AutoTradeModal({ available, onClose, onDeployed }: Props) {
                 Cancel
               </button>
               <button
-                onClick={handleStart}
+                onClick={() => handleStart()}
                 disabled={budget <= 0 || overBudget}
                 className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
               >
