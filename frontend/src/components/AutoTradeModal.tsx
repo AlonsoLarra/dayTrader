@@ -137,19 +137,23 @@ export function AutoTradeModal({ available, onClose, onDeployed }: Props) {
     } catch (e: unknown) {
       const isNetworkError = e instanceof Error &&
         (e.message === 'Network Error' || e.message.toLowerCase().includes('network'));
+      const isTimeout = typeof e === 'object' && e !== null && 'code' in e &&
+        (e as { code?: string }).code === 'ECONNABORTED';
 
-      if (isNetworkError && retryCount < 1) {
+      if ((isNetworkError || isTimeout) && retryCount < 1) {
         await new Promise(r => setTimeout(r, 1500));
         return handleStart(retryCount + 1);
       }
 
       const msg = isNetworkError
         ? 'Connection lost. Check your signal and try again.'
-        : typeof e === 'object' && e !== null && 'response' in e
-          ? String((e as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? 'Failed')
-          : e instanceof Error ? e.message : 'Failed';
+        : isTimeout
+          ? 'Request timed out. The market scan is taking too long — try again in a moment.'
+          : typeof e === 'object' && e !== null && 'response' in e
+            ? String((e as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? 'Failed')
+            : e instanceof Error ? e.message : 'Failed';
       setError(msg);
-      setErrorIsNetwork(isNetworkError);
+      setErrorIsNetwork(isNetworkError || isTimeout);
       setStatus('idle');
     }
   }

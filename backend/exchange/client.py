@@ -170,7 +170,7 @@ async def get_balance(exchange) -> dict:
 async def get_ticker(exchange, symbol: str) -> dict:
     try:
         if isinstance(exchange, PaperExchange):
-            return exchange.fetch_ticker(symbol)
+            return await _run_sync(exchange.fetch_ticker, symbol)
         result = await _run_sync(exchange.fetch_ticker, symbol)
         return result
     except Exception as e:
@@ -180,7 +180,7 @@ async def get_ticker(exchange, symbol: str) -> dict:
 async def get_ohlcv(exchange, symbol: str, timeframe: str = "1h", limit: int = 100) -> list:
     try:
         if isinstance(exchange, PaperExchange):
-            return exchange.fetch_ohlcv(symbol, timeframe, limit)
+            return await _run_sync(exchange.fetch_ohlcv, symbol, timeframe, limit)
         result = await _run_sync(exchange.fetch_ohlcv, symbol, timeframe, None, limit)
         return result
     except Exception as e:

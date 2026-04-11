@@ -6,6 +6,7 @@ import type { Agent, Trade, AgentLog, BacktestResult, TradeSummary, PairAnalysis
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   headers: { 'Content-Type': 'application/json' },
+  timeout: 120000,
 });
 
 // Attach JWT token from localStorage on every request
