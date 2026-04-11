@@ -23,11 +23,12 @@ class TrendRSIStrategy(BaseStrategy):
         super().__init__(params)
         self.ema_period: int = int(self.params.get("ema_period", 50))
         self.rsi_period: int = int(self.params.get("rsi_period", 14))
-        self.rsi_buy: float = float(self.params.get("rsi_buy", 50))
+        self.rsi_buy: float = float(self.params.get("rsi_buy", 42))
         self.rsi_sell: float = float(self.params.get("rsi_sell", 65))
-        self.volume_factor: float = float(self.params.get("volume_factor", 0.9))
-        self.profit_target_pct: float = float(self.params.get("profit_target_pct", 0.025))
+        self.volume_factor: float = float(self.params.get("volume_factor", 1.1))
+        self.profit_target_pct: float = float(self.params.get("profit_target_pct", 0.035))
         self.max_hold_candles: int = int(self.params.get("max_hold_candles", 16))
+        self.ema_slope_bars: int = int(self.params.get("ema_slope_bars", 5))
 
     @property
     def name(self) -> str:
@@ -147,6 +148,16 @@ class TrendRSIStrategy(BaseStrategy):
                 signal=Signal.HOLD,
                 confidence=0.0,
                 reasoning=f"No buy: downtrend (price ${current_price:,.0f} < EMA50 ${current_ema:,.0f})",
+                indicators=indicators,
+            )
+
+        # EMA slope check: require EMA50 to be rising, not just price above it
+        ema_rising = ema50[-1] > ema50[-self.ema_slope_bars] if len(ema50) >= self.ema_slope_bars else True
+        if not ema_rising:
+            return StrategyResult(
+                signal=Signal.HOLD,
+                confidence=0.0,
+                reasoning=f"No buy: EMA50 declining over last {self.ema_slope_bars} bars — weakening trend",
                 indicators=indicators,
             )
 

@@ -40,20 +40,21 @@ class AdaptiveStrategy(BaseStrategy):
         self.bb_period: int = int(self.params.get("bb_period", 20))
         self.bb_std: float = float(self.params.get("bb_std", 2.0))
         self.atr_period: int = int(self.params.get("atr_period", 14))
-        self.volume_factor: float = float(self.params.get("volume_factor", 0.9))
+        self.volume_factor: float = float(self.params.get("volume_factor", 1.1))
         self.max_hold_candles: int = int(self.params.get("max_hold_candles", 20))
         self.min_profit_for_macd_exit: float = float(self.params.get("min_profit_for_macd_exit", 0.005))
+        self.ema_slope_bars: int = int(self.params.get("ema_slope_bars", 5))
 
         # Volatility regime percentile thresholds
         self.low_vol_percentile: float = float(self.params.get("low_vol_percentile", 30.0))
         self.high_vol_percentile: float = float(self.params.get("high_vol_percentile", 70.0))
 
         # RSI thresholds per regime
-        self.rsi_buy_low_vol: float = float(self.params.get("rsi_buy_low_vol", 47.0))
-        self.rsi_buy_normal: float = float(self.params.get("rsi_buy_normal", 50.0))
-        self.rsi_buy_high_vol: float = float(self.params.get("rsi_buy_high_vol", 40.0))
+        self.rsi_buy_low_vol: float = float(self.params.get("rsi_buy_low_vol", 40.0))
+        self.rsi_buy_normal: float = float(self.params.get("rsi_buy_normal", 43.0))
+        self.rsi_buy_high_vol: float = float(self.params.get("rsi_buy_high_vol", 35.0))
         self.rsi_sell_low_vol: float = float(self.params.get("rsi_sell_low_vol", 60.0))
-        self.rsi_sell_normal: float = float(self.params.get("rsi_sell_normal", 65.0))
+        self.rsi_sell_normal: float = float(self.params.get("rsi_sell_normal", 62.0))
         self.rsi_sell_high_vol: float = float(self.params.get("rsi_sell_high_vol", 75.0))
 
         # Trailing stop ATR multipliers per regime
@@ -259,12 +260,13 @@ class AdaptiveStrategy(BaseStrategy):
             indicators["highest_since_entry"] = round(highest_since_entry, 2)
             indicators["trailing_stop_price"] = round(trailing_stop_price, 2)
 
-            if current_price <= trailing_stop_price and profit_pct > 0:
-                locked_profit = (trailing_stop_price - entry_price) / entry_price * 100
+            if current_price <= trailing_stop_price:
+                result_pct = (trailing_stop_price - entry_price) / entry_price * 100
+                action = f"Locked ~{result_pct:.1f}% profit" if result_pct > 0 else f"Cut loss at ~{result_pct:.1f}%"
                 return StrategyResult(
                     signal=Signal.SELL,
                     confidence=1.0,
-                    reasoning=f"Trailing stop hit: price ${current_price:,.0f} <= stop ${trailing_stop_price:,.0f} (peak ${highest_since_entry:,.0f} - {trail_mult}×ATR). Locked ~{locked_profit:.1f}% profit",
+                    reasoning=f"Trailing stop hit: price ${current_price:,.0f} <= stop ${trailing_stop_price:,.0f} (peak ${highest_since_entry:,.0f} - {trail_mult}×ATR). {action}",
                     indicators=indicators,
                 )
 
@@ -321,6 +323,16 @@ class AdaptiveStrategy(BaseStrategy):
                 indicators=indicators,
             )
 
+        # EMA slope check: require EMA50 to be rising, not just price above it
+        ema_rising = ema50[-1] > ema50[-self.ema_slope_bars] if len(ema50) >= self.ema_slope_bars else True
+        if not ema_rising:
+            return StrategyResult(
+                signal=Signal.HOLD,
+                confidence=0.0,
+                reasoning=f"No buy: EMA50 declining over last {self.ema_slope_bars} bars — weakening trend",
+                indicators=indicators,
+            )
+
         if rsi >= rsi_buy_threshold:
             return StrategyResult(
                 signal=Signal.HOLD,
@@ -337,22 +349,24 @@ class AdaptiveStrategy(BaseStrategy):
                 indicators=indicators,
             )
 
-        # MACD used as confidence modifier, not a hard gate.
-        # Positive MACD = full confidence; negative = reduced but still tradeable.
-        macd_ok = macd_hist_positive or macd_bullish_cross
+        # MACD is a hard gate: only buy when momentum is positive or just turning up.
+        # Entering against negative MACD histogram is a primary cause of losses.
+        if not (macd_hist_positive or macd_bullish_cross):
+            return StrategyResult(
+                signal=Signal.HOLD,
+                confidence=0.0,
+                reasoning=f"Waiting: MACD momentum negative (histogram {histogram[-1]:.2f}) — no entry against downward momentum",
+                indicators=indicators,
+            )
 
-        # All core conditions met (uptrend + RSI + volume) — BUY
+        # All core conditions met (uptrend + rising EMA + RSI + volume + MACD) — BUY
         base_confidence = (rsi_buy_threshold - rsi) / rsi_buy_threshold
-        macd_factor = 1.0 if macd_hist_positive else (0.85 if macd_bullish_cross else 0.6)
         volume_ratio = min(current_vol / avg_vol, 2.0) / 2.0 if avg_vol else 0.5
         squeeze_bonus = 0.15 if squeeze_releasing else 0.0
-        confidence = min(base_confidence * macd_factor * (0.5 + volume_ratio) + squeeze_bonus, 1.0)
+        confidence = min(base_confidence * (0.5 + volume_ratio) + squeeze_bonus, 1.0)
 
-        parts = [f"uptrend", f"RSI {rsi:.1f}<{rsi_buy_threshold}"]
-        if macd_ok:
-            parts.append(f"MACD {'positive' if macd_hist_positive else 'crossing up'}")
-        else:
-            parts.append(f"MACD weak ({histogram[-1]:.2f})")
+        parts = ["uptrend", f"EMA rising", f"RSI {rsi:.1f}<{rsi_buy_threshold}"]
+        parts.append(f"MACD {'positive' if macd_hist_positive else 'crossing up'}")
         parts.append(f"vol {current_vol/avg_vol:.1f}x")
         if squeeze_releasing:
             parts.append("BB squeeze releasing")
