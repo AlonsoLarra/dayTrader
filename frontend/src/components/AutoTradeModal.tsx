@@ -52,6 +52,7 @@ export function AutoTradeModal({ available, onClose, onDeployed }: Props) {
   const [totalMarkets, setTotalMarkets] = useState<number>(0);
   const [result, setResult] = useState<DeployResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorIsNetwork, setErrorIsNetwork] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -84,17 +85,20 @@ export function AutoTradeModal({ available, onClose, onDeployed }: Props) {
 
   const overBudget = quoteAvailable > 0 && budget > quoteAvailable + 1e-9;
 
-  async function handleStart() {
+  async function handleStart(retryCount = 0) {
     if (budget <= 0) {
       setError('Enter a valid amount');
+      setErrorIsNetwork(false);
       return;
     }
     if (overBudget) {
       setError(`Only ${formatAmount(quoteAvailable, quoteCurrency)} ${quoteCurrency} available`);
+      setErrorIsNetwork(false);
       return;
     }
 
     setError(null);
+    setErrorIsNetwork(false);
     setStatus('working');
     setPairs([]);
     setScanSymbols([]);
@@ -131,11 +135,21 @@ export function AutoTradeModal({ available, onClose, onDeployed }: Props) {
       setResult(r);
       setStatus('done');
     } catch (e: unknown) {
-      const msg =
-        typeof e === 'object' && e !== null && 'response' in e
+      const isNetworkError = e instanceof Error &&
+        (e.message === 'Network Error' || e.message.toLowerCase().includes('network'));
+
+      if (isNetworkError && retryCount < 1) {
+        await new Promise(r => setTimeout(r, 1500));
+        return handleStart(retryCount + 1);
+      }
+
+      const msg = isNetworkError
+        ? 'Connection lost. Check your signal and try again.'
+        : typeof e === 'object' && e !== null && 'response' in e
           ? String((e as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? 'Failed')
           : e instanceof Error ? e.message : 'Failed';
       setError(msg);
+      setErrorIsNetwork(isNetworkError);
       setStatus('idle');
     }
   }
@@ -366,7 +380,17 @@ export function AutoTradeModal({ available, onClose, onDeployed }: Props) {
             </div>
 
             {error && (
-              <div className="text-xs text-red-400 bg-red-950/40 border border-red-800 rounded-lg px-3 py-2">{error}</div>
+              <div className="text-xs text-red-400 bg-red-950/40 border border-red-800 rounded-lg px-3 py-2">
+                {error}
+                {errorIsNetwork && (
+                  <button
+                    onClick={() => handleStart()}
+                    className="mt-1.5 flex items-center gap-1 text-red-300 hover:text-red-100 underline underline-offset-2 transition-colors"
+                  >
+                    Try again
+                  </button>
+                )}
+              </div>
             )}
 
             <div className="flex gap-3">

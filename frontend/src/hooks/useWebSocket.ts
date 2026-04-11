@@ -77,6 +77,19 @@ export function useWebSocket(enabled = true) {
     };
   }, [connect, enabled]);
 
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && enabled) {
+        reconnectDelay.current = 1000;
+        if (!ws.current || ws.current.readyState === WebSocket.CLOSED) {
+          connect();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [connect, enabled]);
+
   const sendMessage = useCallback((msg: object) => {
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify(msg));
