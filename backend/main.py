@@ -1,6 +1,8 @@
 import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -9,10 +11,11 @@ from sqlalchemy import select
 
 from config import settings
 from database import init_db, AsyncSessionLocal
-from models import AgentState
+from models import AgentState, AutoWatcherLog
 from routers import agents, trades, backtest, ws, prices, settings as settings_router, portfolio
 from routers import strategy as strategy_router
 from routers import auth as auth_router
+from routers import auto_watcher as auto_watcher_router
 from agents.orchestrator import orchestrator, assess_market_opportunity
 from exchange.client import create_exchange, get_available_symbols
 from routers.ws import manager
@@ -33,6 +36,26 @@ STARTUP_INIT_RETRIES = 2
 STARTUP_INIT_RETRY_DELAY_SECONDS = 2
 
 
+async def _log_watcher_cycle(
+    db,
+    action: str,
+    pairs_evaluated: int = 0,
+    eligible_pairs: int = 0,
+    agents_deployed: int = 0,
+    details: dict | None = None,
+) -> None:
+    entry = AutoWatcherLog(
+        timestamp=datetime.now(timezone.utc),
+        action=action,
+        pairs_evaluated=pairs_evaluated,
+        eligible_pairs=eligible_pairs,
+        agents_deployed=agents_deployed,
+        details=json.dumps(details) if details else None,
+    )
+    db.add(entry)
+    await db.commit()
+
+
 async def _auto_trade_watcher():
     """Background task: when no bots are running, scan the market every 60s and auto-deploy."""
     # Small initial delay so the server finishes starting before the first scan
@@ -46,6 +69,7 @@ async def _auto_trade_watcher():
                     select(AgentState).where(AgentState.status == "running")
                 )
                 if result.scalars().first():
+                    await _log_watcher_cycle(db, "skipped_bots_running")
                     await asyncio.sleep(AUTO_WATCHER_INTERVAL_SECONDS)
                     continue
 
@@ -61,6 +85,11 @@ async def _auto_trade_watcher():
                 available = await get_available_budget(db, quote_currency)
                 if available < min_budget:
                     _log.debug("Auto-watcher: insufficient budget (%.4f %s), skipping", available, quote_currency)
+                    await _log_watcher_cycle(db, "budget_insufficient", details={
+                        "available": available,
+                        "min_budget": min_budget,
+                        "currency": quote_currency,
+                    })
                     await asyncio.sleep(AUTO_WATCHER_INTERVAL_SECONDS)
                     continue
 
@@ -73,6 +102,9 @@ async def _auto_trade_watcher():
                 symbols = await get_available_symbols(quote_currency)
                 symbols = [s for s in symbols if s not in active_symbols]
                 if not symbols:
+                    await _log_watcher_cycle(db, "no_symbols", details={
+                        "active_symbols": list(active_symbols),
+                    })
                     await asyncio.sleep(AUTO_WATCHER_INTERVAL_SECONDS)
                     continue
 
@@ -94,13 +126,17 @@ async def _auto_trade_watcher():
 
                 if not scored:
                     _log.info("Auto-watcher: no eligible setups right now, rechecking in %ds", AUTO_WATCHER_INTERVAL_SECONDS)
+                    await _log_watcher_cycle(db, "no_eligible_pairs",
+                        pairs_evaluated=len(market_results),
+                        details={"symbols_scanned": symbols})
                     await asyncio.sleep(AUTO_WATCHER_INTERVAL_SECONDS)
                     continue
 
                 total_score = sum(r.get("rank_score", r.get("score", 0.0)) for r in scored)
                 precision = 8 if quote_currency == "BTC" else 2
 
-                deployed_any = False
+                deployed_count = 0
+                deployment_details = []
                 for pair in scored:
                     weight = pair.get("rank_score", pair.get("score", 0.0)) / total_score
                     allocated = round(available * weight, precision)
@@ -119,7 +155,14 @@ async def _auto_trade_watcher():
                             min_rotation_score_delta=1.0,
                         )
                         await orchestrator.start_agent(agent_id)
-                        deployed_any = True
+                        deployed_count += 1
+                        deployment_details.append({
+                            "symbol": pair["symbol"],
+                            "agent_id": agent_id,
+                            "strategy": pair["strategy"],
+                            "score": pair.get("rank_score", pair.get("score", 0.0)),
+                            "allocated": allocated,
+                        })
                         _log.info(
                             "Auto-watcher: deployed %s (agent %s, budget %.*f %s, score %.1f)",
                             pair["symbol"], agent_id, precision, allocated, quote_currency,
@@ -127,14 +170,29 @@ async def _auto_trade_watcher():
                         )
                     except Exception as exc:
                         _log.warning("Auto-watcher: failed to deploy %s: %s", pair["symbol"], exc)
+                        deployment_details.append({"symbol": pair["symbol"], "error": str(exc)})
 
-                if not deployed_any:
+                if not deployed_count:
                     _log.warning("Auto-watcher: all deployments failed, will retry in %ds", AUTO_WATCHER_INTERVAL_SECONDS)
+
+                await _log_watcher_cycle(
+                    db,
+                    "deployed" if deployed_count > 0 else "error",
+                    pairs_evaluated=len(market_results),
+                    eligible_pairs=len(scored),
+                    agents_deployed=deployed_count,
+                    details={"deployments": deployment_details},
+                )
 
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             _log.error("Auto-watcher unexpected error: %s", exc, exc_info=True)
+            try:
+                async with AsyncSessionLocal() as err_db:
+                    await _log_watcher_cycle(err_db, "error", details={"error": str(exc)})
+            except Exception:
+                pass
 
         await asyncio.sleep(AUTO_WATCHER_INTERVAL_SECONDS)
 
@@ -268,6 +326,7 @@ app.include_router(prices.router)
 app.include_router(settings_router.router)
 app.include_router(strategy_router.router)
 app.include_router(portfolio.router)
+app.include_router(auto_watcher_router.router)
 
 
 @app.get("/api/health")
