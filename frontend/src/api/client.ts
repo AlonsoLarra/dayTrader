@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Agent, Trade, AgentLog, BacktestResult, TradeSummary, PairAnalysis, DeployResult, Position } from '../types';
+import type { Agent, Trade, AgentLog, AutoWatcherLog, BacktestResult, TradeSummary, PairAnalysis, DeployResult, Position } from '../types';
 
 // In production, set VITE_API_BASE_URL = https://your-backend.railway.app/api
 // Locally it falls back to the Vite proxy at /api
@@ -49,6 +49,9 @@ export const killAllAgents = () => api.post('/agents/kill-all').then(r => r.data
 export const deleteAgent = (id: string) => api.delete(`/agents/${id}`).then(r => r.data);
 export const getAgentLogs = (id: string, skip = 0, limit = 50) =>
   api.get<AgentLog[]>(`/agents/${id}/logs`, { params: { skip, limit } }).then(r => r.data);
+
+export const getAutoWatcherLogs = (skip = 0, limit = 100) =>
+  api.get<AutoWatcherLog[]>('/auto-watcher/logs', { params: { skip, limit } }).then(r => r.data);
 
 export const getTrades = (params?: {
   agent_id?: string;

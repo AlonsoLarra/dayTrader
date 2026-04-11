@@ -34,6 +34,20 @@ class AgentLog(Base):
     reasoning: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
+class AutoWatcherLog(Base):
+    __tablename__ = "auto_watcher_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    action: Mapped[str] = mapped_column(String, nullable=False)
+    # Values: "deployed" | "skipped_bots_running" | "no_eligible_pairs"
+    #         | "budget_insufficient" | "no_symbols" | "error"
+    pairs_evaluated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    eligible_pairs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    agents_deployed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    details: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+
 class AgentState(Base):
     __tablename__ = "agent_states"
 

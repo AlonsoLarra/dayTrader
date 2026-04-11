@@ -4,6 +4,7 @@ import clsx from 'clsx';
 import { Dashboard } from './components/Dashboard';
 import { BacktestPanel } from './components/BacktestPanel';
 import { TradeLog } from './components/TradeLog';
+import { AutoWatcherLogPanel } from './components/AutoWatcherLogPanel';
 import { KillSwitch } from './components/KillSwitch';
 import { PriceBoard } from './components/PriceBoard';
 import { AutoTradeModal } from './components/AutoTradeModal';
@@ -175,7 +176,15 @@ export default function App() {
           </div>
         )}
         {tab === 'backtest' && <BacktestPanel />}
-        {tab === 'logs' && <TradeLog trades={trades} />}
+        {tab === 'logs' && (
+          <div className="space-y-6">
+            <AutoWatcherLogPanel />
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
+              <h2 className="text-sm font-semibold text-gray-200 mb-4">Trade History</h2>
+              <TradeLog trades={trades} />
+            </div>
+          </div>
+        )}
       </main>
 
       {/* ── Mobile bottom nav ── */}

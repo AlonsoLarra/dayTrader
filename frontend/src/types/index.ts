@@ -46,6 +46,22 @@ export interface AgentLog {
   reasoning: string | null;
 }
 
+export interface AutoWatcherLog {
+  id: number;
+  timestamp: string;
+  action:
+    | 'deployed'
+    | 'skipped_bots_running'
+    | 'no_eligible_pairs'
+    | 'budget_insufficient'
+    | 'no_symbols'
+    | 'error';
+  pairs_evaluated: number;
+  eligible_pairs: number;
+  agents_deployed: number;
+  details: Record<string, unknown> | null;
+}
+
 export interface BacktestResult {
   total_return_pct: number;
   win_rate: number;
