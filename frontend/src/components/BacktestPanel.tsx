@@ -50,6 +50,20 @@ function actionBadge(action: string) {
   return `${base} bg-gray-800 text-gray-400`;
 }
 
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 // ── RSI Gauge ────────────────────────────────────────────────────────────────
 
 function RSIGauge({ rsi, oversold = 30, overbought = 70 }: { rsi: number; oversold?: number; overbought?: number }) {
@@ -184,7 +198,7 @@ function BotReasoningCard({ bot }: { bot: BotReasoning }) {
 
 // ── Market Scanner ───────────────────────────────────────────────────────────
 
-function MarketScanner({ pairs, loading }: { pairs: PairScan[]; loading: boolean }) {
+function MarketScanner({ pairs, loading, error }: { pairs: PairScan[]; loading: boolean; error?: string | null }) {
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
       <div className="flex items-start justify-between gap-3 mb-3">
@@ -198,6 +212,10 @@ function MarketScanner({ pairs, loading }: { pairs: PairScan[]; loading: boolean
       </div>
       {loading ? (
         <div className="text-xs text-gray-500 py-4 text-center">Scanning pairs…</div>
+      ) : pairs.length === 0 ? (
+        <div className="text-xs text-gray-500 py-4 text-center">
+          No market scan available right now{error ? '. Try refreshing in a few seconds.' : '.'}
+        </div>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {pairs.map((p, i) => {
@@ -401,18 +419,40 @@ export function BacktestPanel() {
   const [initialized, setInitialized] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [liveError, setLiveError] = useState<string | null>(null);
   const [tab, setTab] = useState<'intelligence' | 'backtest'>('intelligence');
 
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setRefreshing(true);
+
     try {
-      const [botsRes, pairsRes] = await Promise.all([getStrategyReasoning(), getMarketScan()]);
-      setBots(botsRes.bots);
-      setPairs(pairsRes.pairs);
+      const [botsRes, pairsRes] = await Promise.allSettled([
+        withTimeout(getStrategyReasoning(), 8000, 'Bot reasoning'),
+        withTimeout(getMarketScan(), 8000, 'Market scan'),
+      ]);
+      const failures: string[] = [];
+
+      if (botsRes.status === 'fulfilled') {
+        setBots(botsRes.value.bots ?? []);
+      } else {
+        failures.push('bot reasoning');
+      }
+
+      if (pairsRes.status === 'fulfilled') {
+        setPairs(pairsRes.value.pairs ?? []);
+      } else {
+        failures.push('market scan');
+      }
+
+      setLiveError(
+        failures.length === 0
+          ? null
+          : failures.length === 1
+            ? `The ${failures[0]} feed is temporarily unavailable.`
+            : 'Some live intelligence feeds are temporarily unavailable.'
+      );
       setLastUpdated(new Date());
       setInitialized(true);
-    } catch {
-      // silent
     } finally {
       setRefreshing(false);
     }
@@ -462,6 +502,11 @@ export function BacktestPanel() {
 
       {tab === 'intelligence' && (
         <div className="space-y-4">
+          {liveError && (
+            <div className="bg-amber-900/20 border border-amber-800 rounded-lg px-3 py-2 text-xs text-amber-200">
+              {liveError}
+            </div>
+          )}
           {/* Active Bot Reasoning */}
           <div>
             <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
@@ -484,7 +529,7 @@ export function BacktestPanel() {
           </div>
 
           {/* Market Scanner — always shows stale data while refreshing */}
-          <MarketScanner pairs={pairs} loading={!initialized} />
+          <MarketScanner pairs={pairs} loading={!initialized} error={liveError} />
 
           {/* Legend */}
           <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">

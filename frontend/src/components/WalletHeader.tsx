@@ -26,7 +26,7 @@ export function WalletHeader({ onAvailableChange }: Props) {
 
   const loadPaperWallet = useCallback(async () => {
     try {
-      const data = await getPaperWallet();
+      const data = await getPaperWallet(selectedQuote);
       setPaperWalletData(data);
       const selectedBalance = data.balances?.[selectedQuote] ?? data;
       onAvailableChange(Number(selectedBalance?.available ?? 0));

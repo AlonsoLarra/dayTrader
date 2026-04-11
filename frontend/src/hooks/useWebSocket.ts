@@ -12,11 +12,14 @@ export function useWebSocket(enabled = true) {
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelay = useRef(1000);
+  const manualClose = useRef(false);
 
   const connect = useCallback(() => {
-    if (!enabled || ws.current?.readyState === WebSocket.OPEN) return;
+    if (!enabled || (ws.current && (ws.current.readyState === WebSocket.OPEN || ws.current.readyState === WebSocket.CONNECTING))) return;
 
     try {
+      manualClose.current = false;
+      setReadyState(WebSocket.CONNECTING);
       const socket = new WebSocket(WS_URL);
       ws.current = socket;
 
@@ -37,7 +40,10 @@ export function useWebSocket(enabled = true) {
       };
 
       socket.onclose = () => {
+        ws.current = null;
         setReadyState(WebSocket.CLOSED);
+        if (manualClose.current || !enabled) return;
+
         reconnectTimeout.current = setTimeout(() => {
           reconnectDelay.current = Math.min(reconnectDelay.current * 2, 30000);
           connect();
@@ -54,6 +60,7 @@ export function useWebSocket(enabled = true) {
 
   useEffect(() => {
     if (!enabled) {
+      manualClose.current = true;
       if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
       ws.current?.close();
       ws.current = null;
@@ -63,8 +70,10 @@ export function useWebSocket(enabled = true) {
 
     connect();
     return () => {
+      manualClose.current = true;
       if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
       ws.current?.close();
+      ws.current = null;
     };
   }, [connect, enabled]);
 

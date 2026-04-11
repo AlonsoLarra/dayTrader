@@ -17,9 +17,17 @@ function getBaseAsset(symbol: string) {
   return (symbol.includes('/') ? symbol.split('/')[0] : symbol).toUpperCase();
 }
 
-function formatQuoteAmount(value: number, quoteCurrency = 'MXN') {
+function formatQuoteAmount(value: number, quoteCurrency = 'MXN', perUnit = false) {
   const normalizedQuote = (quoteCurrency || 'MXN').toUpperCase();
-  const digits = normalizedQuote === 'BTC' ? 6 : 2;
+  const digits = perUnit
+    ? normalizedQuote === 'BTC'
+      ? 6
+      : Math.abs(Number(value || 0)) >= 100
+        ? 2
+        : 4
+    : normalizedQuote === 'BTC'
+      ? 6
+      : 2;
   const formatted = Number(value || 0).toLocaleString('en-US', {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
@@ -143,7 +151,7 @@ export function PositionsPanel({ onSold, refreshTrigger }: Props) {
                 <div>
                   <div className="text-xs text-gray-500 mb-0.5">Entry Value</div>
                   <div className="text-sm text-white font-mono">{formatQuoteAmount(entryValue, quoteCurrency)}</div>
-                  <div className="text-[11px] text-gray-500 mt-0.5">@ {formatQuoteAmount(pos.entry_price, quoteCurrency)} each</div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">@ {formatQuoteAmount(pos.entry_price, quoteCurrency, true)} each</div>
                 </div>
                 <div>
                   <div className="text-xs text-gray-500 mb-0.5">Current Value</div>
@@ -153,7 +161,7 @@ export function PositionsPanel({ onSold, refreshTrigger }: Props) {
                       : '—'}
                   </div>
                   <div className="text-[11px] text-gray-500 mt-0.5">
-                    {pos.current_price != null ? `@ ${formatQuoteAmount(pos.current_price, quoteCurrency)} each` : 'Live price unavailable'}
+                    {pos.current_price != null ? `@ ${formatQuoteAmount(pos.current_price, quoteCurrency, true)} each` : 'Live price unavailable'}
                   </div>
                 </div>
                 <div>

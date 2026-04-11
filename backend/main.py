@@ -28,6 +28,9 @@ _log = logging.getLogger("auto_watcher")
 AUTO_WATCHER_INTERVAL_SECONDS = 60
 AUTO_WATCHER_MIN_SCORE = 30.0
 AUTO_WATCHER_MAX_AGENTS = 3
+STARTUP_INIT_TIMEOUT_SECONDS = 8
+STARTUP_INIT_RETRIES = 2
+STARTUP_INIT_RETRY_DELAY_SECONDS = 2
 
 
 async def _auto_trade_watcher():
@@ -136,13 +139,82 @@ async def _auto_trade_watcher():
         await asyncio.sleep(AUTO_WATCHER_INTERVAL_SECONDS)
 
 
+async def _initialize_runtime_state() -> None:
+    await asyncio.wait_for(init_db(), timeout=STARTUP_INIT_TIMEOUT_SECONDS)
+    await asyncio.wait_for(orchestrator.reload_from_db(), timeout=STARTUP_INIT_TIMEOUT_SECONDS)
+
+
+async def _initialize_runtime_state_with_retries() -> None:
+    last_exc = None
+    for attempt in range(1, STARTUP_INIT_RETRIES + 1):
+        try:
+            await _initialize_runtime_state()
+            if attempt > 1:
+                _log.info("Startup dependencies became ready on attempt %d/%d", attempt, STARTUP_INIT_RETRIES)
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            last_exc = exc
+            _log.warning(
+                "Startup initialization attempt %d/%d did not complete: %s",
+                attempt,
+                STARTUP_INIT_RETRIES,
+                exc,
+                exc_info=True,
+            )
+            if attempt < STARTUP_INIT_RETRIES:
+                await asyncio.sleep(STARTUP_INIT_RETRY_DELAY_SECONDS)
+
+    if last_exc is not None:
+        raise last_exc
+
+
+async def _background_retry_startup_state(app: FastAPI) -> None:
+    while not getattr(app.state, "runtime_ready", False):
+        try:
+            await asyncio.sleep(15)
+            await _initialize_runtime_state_with_retries()
+            app.state.runtime_ready = True
+            app.state.startup_error = None
+            _log.info("Background startup recovery succeeded")
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            app.state.startup_error = str(exc)
+            _log.warning("Background startup recovery still failing: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()
     orchestrator.set_broadcaster(manager)
-    await orchestrator.reload_from_db()
+    app.state.runtime_ready = False
+    app.state.startup_error = None
+    retry_task = None
+
+    try:
+        await _initialize_runtime_state_with_retries()
+        app.state.runtime_ready = True
+    except Exception as exc:
+        app.state.startup_error = str(exc)
+        _log.error(
+            "Starting API in degraded mode while startup dependencies recover: %s",
+            exc,
+            exc_info=True,
+        )
+        retry_task = asyncio.create_task(_background_retry_startup_state(app))
+
     watcher_task = asyncio.create_task(_auto_trade_watcher())
     yield
+
+    if retry_task:
+        retry_task.cancel()
+        try:
+            await retry_task
+        except asyncio.CancelledError:
+            pass
+
     watcher_task.cancel()
     try:
         await watcher_task

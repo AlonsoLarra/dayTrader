@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, Activity, FileText, BarChart2, LogOut, Menu, X } from 'lucide-react';
+import { TrendingUp, Activity, FileText, BarChart2, LogOut, Menu, X, Zap } from 'lucide-react';
 import clsx from 'clsx';
 import { Dashboard } from './components/Dashboard';
 import { BacktestPanel } from './components/BacktestPanel';
@@ -10,8 +10,8 @@ import { AutoTradeModal } from './components/AutoTradeModal';
 import { WalletHeader } from './components/WalletHeader';
 import { LoginScreen } from './components/LoginScreen';
 import { useWebSocket } from './hooks/useWebSocket';
-import { getTrades, getAgents, getPaperWallet } from './api/client';
-import type { Trade, Agent } from './types';
+import { getTrades, getAgents, getPaperWallet, getTradeSummary } from './api/client';
+import type { Trade, Agent, TradeSummary } from './types';
 
 type Tab = 'dashboard' | 'backtest' | 'logs';
 
@@ -20,6 +20,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('dashboard');
   const [trades, setTrades] = useState<Trade[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [summary, setSummary] = useState<TradeSummary | null>(null);
   const [available, setAvailable] = useState<number>(0);
   const [showAutoTrade, setShowAutoTrade] = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
@@ -34,9 +35,14 @@ export default function App() {
 
   const refreshAll = useCallback(async () => {
     try {
-      const [t, a] = await Promise.all([getTrades({ limit: 500 }), getAgents()]);
+      const [t, a, s] = await Promise.all([
+        getTrades({ limit: 500 }),
+        getAgents(),
+        getTradeSummary(),
+      ]);
       setTrades(t);
       setAgents(a);
+      setSummary(s);
     } catch {
       // Ignore transient auth/network failures; the login screen handles auth state.
     }
@@ -138,7 +144,8 @@ export default function App() {
               onClick={() => setShowAutoTrade(true)}
               className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg font-medium transition-colors"
             >
-              ⚡ Auto-Trade
+              <Zap size={15} />
+              <span>Auto-Trade</span>
             </button>
             <div className="w-px h-6 bg-gray-700" />
             <KillSwitch hasRunningAgents={hasRunningAgents} onKilled={() => { refreshAll(); refreshWallet(); }} />
@@ -159,7 +166,12 @@ export default function App() {
         {tab === 'dashboard' && (
           <div className="space-y-4 md:space-y-6">
             <PriceBoard />
-            <Dashboard lastWsMessage={lastMessage} />
+            <Dashboard
+              agents={agents}
+              trades={trades}
+              summary={summary}
+              onRefresh={refreshAll}
+            />
           </div>
         )}
         {tab === 'backtest' && <BacktestPanel />}
@@ -208,7 +220,8 @@ export default function App() {
                 onClick={() => { setShowAutoTrade(true); setShowDrawer(false); }}
                 className="flex items-center gap-3 px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors"
               >
-                ⚡ Auto-Trade
+                <Zap size={16} />
+                <span>Auto-Trade</span>
               </button>
               <KillSwitch
                 hasRunningAgents={hasRunningAgents}

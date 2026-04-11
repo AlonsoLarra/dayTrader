@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
-import type { Agent, Trade, TradeSummary, WsMessage } from '../types';
-import { getAgents, getTrades, getTradeSummary } from '../api/client';
+import { useState } from 'react';
+import type { Agent, Trade, TradeSummary } from '../types';
 import { AgentCard } from './AgentCard';
 import { PnLChart } from './PnLChart';
 import { CreateAgentModal } from './CreateAgentModal';
 import { PositionsPanel } from './PositionsPanel';
 
 interface Props {
-  lastWsMessage: WsMessage | null;
+  agents: Agent[];
+  trades: Trade[];
+  summary: TradeSummary | null;
+  onRefresh: () => Promise<void>;
 }
 
 function getQuoteCurrency(symbol: string, explicit?: string) {
@@ -26,30 +28,8 @@ function formatSummaryAmount(value: number, quoteCurrency?: string) {
   return normalizedQuote === 'MXN' ? `$${formatted}` : `${formatted} ${normalizedQuote}`;
 }
 
-export function Dashboard({ lastWsMessage }: Props) {
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [summary, setSummary] = useState<TradeSummary | null>(null);
+export function Dashboard({ agents, trades, summary, onRefresh }: Props) {
   const [showCreate, setShowCreate] = useState(false);
-
-  const refresh = useCallback(async () => {
-    const [a, t, s] = await Promise.all([
-      getAgents(),
-      getTrades({ limit: 200 }),
-      getTradeSummary(),
-    ]);
-    setAgents(a);
-    setTrades(t);
-    setSummary(s);
-  }, []);
-
-  useEffect(() => { refresh(); }, [refresh]);
-
-  useEffect(() => {
-    if (lastWsMessage && ['trade', 'state_update'].includes(lastWsMessage.type)) {
-      refresh();
-    }
-  }, [lastWsMessage, refresh]);
 
   const runningAgents = agents.filter(a => a.status === 'running').length;
   const activeQuotes = Array.from(new Set(
@@ -115,7 +95,7 @@ export function Dashboard({ lastWsMessage }: Props) {
 
 
       {/* Open positions */}
-      <PositionsPanel onSold={refresh} refreshTrigger={agents.filter(a => a.status === 'running').length} />
+      <PositionsPanel onSold={onRefresh} refreshTrigger={agents.filter(a => a.status === 'running').length} />
       {/* Bots */}
       <div>
         <div className="flex items-center justify-between mb-4">
@@ -134,7 +114,7 @@ export function Dashboard({ lastWsMessage }: Props) {
         ) : (
           <div className="grid gap-3 md:gap-4 md:grid-cols-2 xl:grid-cols-3">
             {agents.map(agent => (
-              <AgentCard key={agent.agent_id} agent={agent} onUpdate={refresh} />
+              <AgentCard key={agent.agent_id} agent={agent} onUpdate={onRefresh} />
             ))}
           </div>
         )}
@@ -151,7 +131,7 @@ export function Dashboard({ lastWsMessage }: Props) {
           onClose={() => setShowCreate(false)}
           onCreate={async () => {
             setShowCreate(false);
-            await refresh();
+            await onRefresh();
           }}
         />
       )}

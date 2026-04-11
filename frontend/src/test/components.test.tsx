@@ -342,7 +342,8 @@ describe('PositionsPanel', () => {
 
     await waitFor(() => expect(screen.getByText(/Current Value/i)).toBeInTheDocument());
     expect(screen.getByText('25.20 USD')).toBeInTheDocument();
-    expect(screen.getByText(/@ 0.25 USD each/i)).toBeInTheDocument();
+    expect(screen.getByText(/@ 0\.2500 USD each/i)).toBeInTheDocument();
+    expect(screen.getByText(/@ 0\.2520 USD each/i)).toBeInTheDocument();
     expect(screen.getByText('100.00 FET')).toBeInTheDocument();
   });
 });
@@ -494,6 +495,16 @@ describe('BacktestPanel', () => {
     expect(screen.getAllByText(/BUY SIGNAL/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Buy signal: uptrend \+ RSI pullback \+ volume confirmation/i)).toBeInTheDocument();
     expect(screen.getByText(/Being watched by 1 bot/i)).toBeInTheDocument();
+  });
+
+  it('stops showing the loading state when the market scan request fails', async () => {
+    (apiMock.getMarketScan as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('scan temporarily unavailable'));
+
+    render(<BacktestPanel />);
+
+    await waitFor(() => expect(screen.queryByText(/Loading bot analysis/i)).not.toBeInTheDocument());
+    expect(screen.getByText('XRP/MXN')).toBeInTheDocument();
+    expect(screen.getByText(/No market scan available right now/i)).toBeInTheDocument();
   });
 });
 
