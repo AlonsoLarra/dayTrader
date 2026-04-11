@@ -91,7 +91,7 @@ export default function App() {
       {/* ── Header ── */}
       <header className="bg-gray-800 border-b border-gray-700 sticky top-0 z-30">
         {/* Mobile header */}
-        <div className="flex md:hidden items-center justify-between h-14 px-4">
+        <div className="flex lg:hidden items-center justify-between h-14 px-4">
           <div className="flex items-center gap-2">
             <TrendingUp size={18} className="text-blue-400" />
             <span className="text-sm font-bold tracking-tight">dayTrader</span>
@@ -109,7 +109,7 @@ export default function App() {
         </div>
 
         {/* Desktop header */}
-        <div className="hidden md:flex items-center justify-between h-14 px-6">
+        <div className="hidden lg:flex items-center justify-between h-14 px-6">
           <div className="flex items-center gap-0 h-full">
             <div className="flex items-center gap-2 pr-6 border-r border-gray-700 mr-2 h-full">
               <TrendingUp size={18} className="text-blue-400" />
@@ -155,7 +155,7 @@ export default function App() {
       </header>
 
       {/* ── Main content ── */}
-      <main className="max-w-7xl mx-auto p-4 md:p-6 pb-24 md:pb-6">
+      <main className="max-w-7xl mx-auto p-4 lg:p-6 pb-24 lg:pb-6">
         {tab === 'dashboard' && (
           <div className="space-y-4 md:space-y-6">
             <PriceBoard />
@@ -168,7 +168,7 @@ export default function App() {
 
       {/* ── Mobile bottom nav ── */}
       <nav
-        className="fixed bottom-0 inset-x-0 z-30 md:hidden bg-gray-800 border-t border-gray-700 flex"
+        className="fixed bottom-0 inset-x-0 z-30 lg:hidden bg-gray-800 border-t border-gray-700 flex"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {tabs.map(t => (
@@ -188,7 +188,7 @@ export default function App() {
 
       {/* ── Mobile drawer ── */}
       {showDrawer && (
-        <div className="fixed inset-0 z-50 md:hidden">
+        <div className="fixed inset-0 z-50 lg:hidden">
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setShowDrawer(false)}
