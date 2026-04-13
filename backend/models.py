@@ -73,6 +73,8 @@ class AgentState(Base):
     open_position_side: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     open_position_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     open_position_amount: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    stop_loss_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    position_size_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 

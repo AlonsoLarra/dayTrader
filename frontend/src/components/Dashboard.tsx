@@ -4,12 +4,14 @@ import { AgentCard } from './AgentCard';
 import { PnLChart } from './PnLChart';
 import { CreateAgentModal } from './CreateAgentModal';
 import { PositionsPanel } from './PositionsPanel';
+import { DeployPanel } from './DeployPanel';
 
 interface Props {
   agents: Agent[];
   trades: Trade[];
   summary: TradeSummary | null;
   onRefresh: () => Promise<void>;
+  available: number;
 }
 
 function getQuoteCurrency(symbol: string, explicit?: string) {
@@ -28,7 +30,7 @@ function formatSummaryAmount(value: number, quoteCurrency?: string) {
   return normalizedQuote === 'MXN' ? `$${formatted}` : `${formatted} ${normalizedQuote}`;
 }
 
-export function Dashboard({ agents, trades, summary, onRefresh }: Props) {
+export function Dashboard({ agents, trades, summary, onRefresh, available }: Props) {
   const [showCreate, setShowCreate] = useState(false);
 
   const runningAgents = agents.filter(a => a.status === 'running').length;
@@ -47,6 +49,9 @@ export function Dashboard({ agents, trades, summary, onRefresh }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* Auto-Trade deploy panel */}
+      <DeployPanel available={available} onDeployed={onRefresh} />
+
       {/* Portfolio overview */}
       <div className="bg-gray-800 rounded-lg border border-gray-700 p-5">
         <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Portfolio Overview</div>
@@ -109,7 +114,7 @@ export function Dashboard({ agents, trades, summary, onRefresh }: Props) {
         </div>
         {agents.length === 0 ? (
           <div className="bg-gray-800 rounded-lg p-8 border border-gray-700 text-center text-gray-500 text-sm">
-            No bots yet. Use <span className="text-blue-400 font-medium">Auto-Trade</span> in the header or click <span className="text-blue-400 font-medium">+ New Bot</span>.
+            No bots yet. Use <span className="text-blue-400 font-medium">Auto-Trade</span> above or click <span className="text-blue-400 font-medium">+ New Bot</span>.
           </div>
         ) : (
           <div className="grid gap-3 md:gap-4 md:grid-cols-2 xl:grid-cols-3">

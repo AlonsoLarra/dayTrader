@@ -112,7 +112,11 @@ export const deployPortfolio = (data: {
   rotation_interval_minutes?: number;
   aggressive_rotation?: boolean;
   min_rotation_score_delta?: number;
+  risk_level?: number;
 }) => api.post<DeployResult>('/portfolio/deploy', data).then(r => r.data);
+
+export const exportTrades = (limit_days = 30) =>
+  api.get('/trades/export', { responseType: 'blob', params: { limit_days } }).then(r => r.data);
 
 export const getPositions = () =>
   api.get<{ positions: Position[] }>('/agents/positions').then(r => r.data);
@@ -132,10 +136,10 @@ export interface PaperWalletData extends PaperWalletSnapshot {
   balances?: Record<string, PaperWalletSnapshot>;
 }
 
-export const getPaperWallet = (currency = 'MXN') =>
+export const getPaperWallet = (currency = 'USD') =>
   api.get<PaperWalletData>('/settings/paper-wallet', { params: { currency } }).then(r => r.data);
 
-export const setPaperWallet = (starting_balance: number, currency = 'MXN') =>
+export const setPaperWallet = (starting_balance: number, currency = 'USD') =>
   api.post<{ starting_balance: number; currency?: string }>('/settings/paper-wallet', {
     starting_balance,
     currency,

@@ -14,16 +14,25 @@ from routers.settings import get_available_budget
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
+RISK_LEVEL_MAP = {
+    1: {"stop_loss_pct": 0.02,  "position_size_pct": 0.10, "max_agents": 1, "min_score": 50.0},
+    2: {"stop_loss_pct": 0.025, "position_size_pct": 0.15, "max_agents": 2, "min_score": 40.0},
+    3: {"stop_loss_pct": 0.03,  "position_size_pct": 0.25, "max_agents": 3, "min_score": 30.0},
+    4: {"stop_loss_pct": 0.04,  "position_size_pct": 0.35, "max_agents": 4, "min_score": 20.0},
+    5: {"stop_loss_pct": 0.05,  "position_size_pct": 0.45, "max_agents": 6, "min_score": 15.0},
+}
+
 
 class DeployRequest(BaseModel):
     budget: float
-    quote_currency: str = "MXN"
+    quote_currency: str = "USD"
     max_agents: int = 3
     min_score: float = 30.0
     rotation_enabled: bool = True
     aggressive_rotation: bool = True
     rotation_interval_minutes: int = 1
     min_rotation_score_delta: float = 1.0
+    risk_level: int = 3
 
 
 class PairScore(BaseModel):
@@ -235,17 +244,25 @@ async def analyze_market(max_pairs: int = 10, quote_currency: str = "MXN"):
 @router.post("/deploy")
 async def deploy_portfolio(req: DeployRequest, db: AsyncSession = Depends(get_db)):
     """Analyze market, pick best pairs, create + start agents."""
-    quote_currency = (req.quote_currency or "MXN").upper()
-    min_budget = 0.0001 if quote_currency == "BTC" else 10.0
+    # Apply risk level overrides
+    risk_params = RISK_LEVEL_MAP.get(int(req.risk_level or 3), RISK_LEVEL_MAP[3])
+    stop_loss_pct = risk_params["stop_loss_pct"]
+    position_size_pct = risk_params["position_size_pct"]
+    effective_max_agents = risk_params["max_agents"]
+    effective_min_score = risk_params["min_score"]
+
+    quote_currency = (req.quote_currency or "USD").upper()
+    min_budget = 0.0001 if quote_currency == "BTC" else 5.0
     if req.budget < min_budget:
         display_min_budget = f"{min_budget:.4f}" if quote_currency == "BTC" else f"{min_budget:.0f}"
         raise HTTPException(status_code=400, detail=f"Minimum budget is {display_min_budget} {quote_currency}")
-    if req.max_agents < 1 or req.max_agents > 6:
+    if effective_max_agents < 1 or effective_max_agents > 6:
         raise HTTPException(status_code=400, detail="max_agents must be 1–6")
     if req.rotation_interval_minutes < 1 or req.rotation_interval_minutes > 5:
         raise HTTPException(status_code=400, detail="rotation_interval_minutes must be 1–5")
 
     available = await get_available_budget(db, quote_currency)
+
     if req.budget > available:
         precision = 8 if quote_currency == 'BTC' else 2
         raise HTTPException(
@@ -274,16 +291,17 @@ async def deploy_portfolio(req: DeployRequest, db: AsyncSession = Depends(get_db
     results = await asyncio.gather(*[_analyze_pair(exchange, s) for s in symbols])
     scored = [
         r for r in results
-        if r.get("rank_score", r["score"]) >= req.min_score and r.get("eligible") and r.get("signal") == "buy"
+        if r.get("rank_score", r["score"]) >= effective_min_score and r.get("eligible") and r.get("signal") == "buy"
     ]
-    scored = sorted(scored, key=lambda x: x.get("rank_score", x["score"]), reverse=True)[: req.max_agents]
+    scored = sorted(scored, key=lambda x: x.get("rank_score", x["score"]), reverse=True)[: effective_max_agents]
 
     if not scored:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"No markets currently have a strong long buy setup above score {req.min_score}. "
-                "The system will keep scanning — try again in a minute or lower min_score."
+                f"No markets currently have a strong long buy setup above score {effective_min_score} "
+                f"(risk level {req.risk_level}). "
+                "The system will keep scanning — try again in a minute."
             ),
         )
 
@@ -312,6 +330,8 @@ async def deploy_portfolio(req: DeployRequest, db: AsyncSession = Depends(get_db
                 aggressive_rotation=req.aggressive_rotation,
                 rotation_interval_minutes=req.rotation_interval_minutes,
                 min_rotation_score_delta=req.min_rotation_score_delta,
+                stop_loss_pct=stop_loss_pct,
+                position_size_pct=position_size_pct,
             )
             await orchestrator.start_agent(agent_id)
             agent_ids.append(agent_id)
