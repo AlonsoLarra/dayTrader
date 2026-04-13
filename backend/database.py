@@ -70,6 +70,8 @@ def _migrate_schema(conn):
             password_hash TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
+        "ALTER TABLE agent_states ADD COLUMN stop_loss_pct REAL",
+        "ALTER TABLE agent_states ADD COLUMN position_size_pct REAL",
     ]
     def _run_safe(sql: str) -> None:
         try:

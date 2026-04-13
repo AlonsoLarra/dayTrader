@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, Activity, FileText, BarChart2, LogOut, Menu, X, Zap } from 'lucide-react';
+import { TrendingUp, Activity, FileText, BarChart2, LogOut, Menu, X } from 'lucide-react';
 import clsx from 'clsx';
 import { Dashboard } from './components/Dashboard';
 import { BacktestPanel } from './components/BacktestPanel';
@@ -7,7 +7,6 @@ import { TradeLog } from './components/TradeLog';
 import { AutoWatcherLogPanel } from './components/AutoWatcherLogPanel';
 import { KillSwitch } from './components/KillSwitch';
 import { PriceBoard } from './components/PriceBoard';
-import { AutoTradeModal } from './components/AutoTradeModal';
 import { WalletHeader } from './components/WalletHeader';
 import { LoginScreen } from './components/LoginScreen';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -23,7 +22,6 @@ export default function App() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [summary, setSummary] = useState<TradeSummary | null>(null);
   const [available, setAvailable] = useState<number>(0);
-  const [showAutoTrade, setShowAutoTrade] = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
   const { lastMessage } = useWebSocket(Boolean(token));
 
@@ -141,13 +139,6 @@ export default function App() {
 
           <div className="flex items-center gap-3">
             <WalletHeader onAvailableChange={setAvailable} />
-            <button
-              onClick={() => setShowAutoTrade(true)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg font-medium transition-colors"
-            >
-              <Zap size={15} />
-              <span>Auto-Trade</span>
-            </button>
             <div className="w-px h-6 bg-gray-700" />
             <KillSwitch hasRunningAgents={hasRunningAgents} onKilled={() => { refreshAll(); refreshWallet(); }} />
             <div className="w-px h-6 bg-gray-700" />
@@ -172,6 +163,7 @@ export default function App() {
               trades={trades}
               summary={summary}
               onRefresh={refreshAll}
+              available={available}
             />
           </div>
         )}
@@ -225,13 +217,6 @@ export default function App() {
               </button>
             </div>
             <div className="flex flex-col gap-3 p-4">
-              <button
-                onClick={() => { setShowAutoTrade(true); setShowDrawer(false); }}
-                className="flex items-center gap-3 px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors"
-              >
-                <Zap size={16} />
-                <span>Auto-Trade</span>
-              </button>
               <KillSwitch
                 hasRunningAgents={hasRunningAgents}
                 onKilled={() => { refreshAll(); refreshWallet(); setShowDrawer(false); }}
@@ -250,13 +235,6 @@ export default function App() {
         </div>
       )}
 
-      {showAutoTrade && (
-        <AutoTradeModal
-          available={available}
-          onClose={() => setShowAutoTrade(false)}
-          onDeployed={() => { setShowAutoTrade(false); refreshAll(); refreshWallet(); }}
-        />
-      )}
     </div>
   );
 }

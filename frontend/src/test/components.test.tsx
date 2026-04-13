@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { AutoTradeModal } from '../components/AutoTradeModal';
+import { DeployPanel } from '../components/DeployPanel';
 import { WalletHeader } from '../components/WalletHeader';
 import { AgentCard } from '../components/AgentCard';
 import { BacktestPanel } from '../components/BacktestPanel';
@@ -49,133 +49,47 @@ vi.mock('../hooks/useWebSocket', () => ({
 import * as apiMock from '../api/client';
 import App from '../App';
 
-// ── AutoTradeModal tests ──────────────────────────────────────────────────────
+// ── DeployPanel tests ─────────────────────────────────────────────────────────
 
-describe('AutoTradeModal', () => {
+describe('DeployPanel', () => {
   const defaultProps = {
     available: 100,
-    onClose: vi.fn(),
     onDeployed: vi.fn(),
   };
 
-  beforeEach(() => vi.clearAllMocks());
-
-  it('renders budget input and Start Trading button', () => {
-    render(<AutoTradeModal {...defaultProps} />);
-    expect(screen.getByText(/Start Trading/i)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/MXN/i)).toBeInTheDocument();
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (apiMock.getPaperWallet as ReturnType<typeof vi.fn>).mockResolvedValue({
+      starting_balance: 100,
+      available: 100,
+      deployed: 0,
+      in_market: 0,
+      balances: {
+        USD: { starting_balance: 100, deployed: 0, in_market: 0, available: 100 },
+      },
+    });
   });
 
-  it('shows Cancel button that calls onClose', () => {
-    render(<AutoTradeModal {...defaultProps} />);
-    fireEvent.click(screen.getByText('Cancel'));
-    expect(defaultProps.onClose).toHaveBeenCalled();
+  it('renders budget input and Start Trading button', async () => {
+    render(<DeployPanel {...defaultProps} />);
+    await waitFor(() => expect(screen.getByText(/Start Trading/i)).toBeInTheDocument());
+    expect(screen.getByPlaceholderText(/100/i)).toBeInTheDocument();
   });
 
-  it('disables Start Trading when budget exceeds available', () => {
-    render(<AutoTradeModal {...defaultProps} available={50} />);
-    const input = screen.getByPlaceholderText(/MXN/i);
-    fireEvent.change(input, { target: { value: '200' } });
-    const btn = screen.getByText(/Start Trading/i).closest('button');
-    expect(btn).toBeDisabled();
-  });
-
-  it('calls analyzeMarket then deployPortfolio on submit', async () => {
+  it('calls analyzeMarket then deployPortfolio on submit with USD', async () => {
     const analyze = apiMock.analyzeMarket as ReturnType<typeof vi.fn>;
     const deploy = apiMock.deployPortfolio as ReturnType<typeof vi.fn>;
     const markets = apiMock.getMarkets as ReturnType<typeof vi.fn>;
-    markets.mockResolvedValue({ symbols: ['XRP/MXN'] });
-    analyze.mockResolvedValue({ pairs: [{ symbol: 'XRP/MXN', score: 75 }] });
+    markets.mockResolvedValue({ symbols: ['BTC/USD'] });
+    analyze.mockResolvedValue({ pairs: [{ symbol: 'BTC/USD', score: 75 }] });
     deploy.mockResolvedValue({
       agent_ids: ['a1'],
       total_budget: 100,
-      pairs: [{ symbol: 'XRP/MXN', budget_allocated: 100 }],
+      pairs: [{ symbol: 'BTC/USD', budget_allocated: 100 }],
     });
 
-    render(<AutoTradeModal {...defaultProps} />);
-    fireEvent.click(screen.getByText(/Start Trading/i));
-
-    await waitFor(() => expect(analyze).toHaveBeenCalledWith(0, 'MXN'));
-    await waitFor(() => expect(deploy).toHaveBeenCalledWith({
-      budget: 100,
-      max_agents: 3,
-      min_score: 20,
-      quote_currency: 'MXN',
-      rotation_enabled: true,
-      rotation_interval_minutes: 1,
-      aggressive_rotation: true,
-      min_rotation_score_delta: 1,
-    }));
-  });
-
-  it('can switch to BTC quote mode for auto-trade', async () => {
-    const analyze = apiMock.analyzeMarket as ReturnType<typeof vi.fn>;
-    const deploy = apiMock.deployPortfolio as ReturnType<typeof vi.fn>;
-    const markets = apiMock.getMarkets as ReturnType<typeof vi.fn>;
-    const paperWallet = apiMock.getPaperWallet as ReturnType<typeof vi.fn>;
-
-    markets.mockImplementation((quote?: string) => Promise.resolve({
-      symbols: quote === 'BTC' ? ['ETH/BTC', 'SOL/BTC'] : quote === 'USD' ? ['BTC/USD', 'ETH/USD', 'SOL/USD'] : ['BTC/MXN'],
-    }));
-    paperWallet.mockResolvedValue({
-      starting_balance: 100,
-      deployed: 0,
-      in_market: 0,
-      available: 75,
-      balances: {
-        MXN: { starting_balance: 100, deployed: 0, in_market: 0, available: 75 },
-        BTC: { starting_balance: 0.01, deployed: 0, in_market: 0, available: 0.01 },
-        USD: { starting_balance: 250, deployed: 0, in_market: 0, available: 250 },
-        USDT: { starting_balance: 250, deployed: 0, in_market: 0, available: 250 },
-      },
-    });
-    analyze.mockResolvedValue({ pairs: [{ symbol: 'ETH/BTC', score: 75, strategy: 'trend_rsi', reason: 'Buy signal active' }] });
-    deploy.mockResolvedValue({
-      agent_ids: ['a1'],
-      total_budget: 0.01,
-      pairs: [{ symbol: 'ETH/BTC', budget_allocated: 0.01 }],
-    });
-
-    render(<AutoTradeModal {...defaultProps} />);
-    fireEvent.change(screen.getByLabelText(/Quote currency/i), { target: { value: 'BTC' } });
-    fireEvent.click(screen.getByText(/Start Trading/i));
-
-    await waitFor(() => expect(analyze).toHaveBeenCalledWith(0, 'BTC'));
-    await waitFor(() => expect(deploy).toHaveBeenCalledWith(expect.objectContaining({
-      quote_currency: 'BTC',
-    })));
-  });
-
-  it('can switch to USD quote mode to scan a much larger market set', async () => {
-    const analyze = apiMock.analyzeMarket as ReturnType<typeof vi.fn>;
-    const deploy = apiMock.deployPortfolio as ReturnType<typeof vi.fn>;
-    const markets = apiMock.getMarkets as ReturnType<typeof vi.fn>;
-    const paperWallet = apiMock.getPaperWallet as ReturnType<typeof vi.fn>;
-
-    markets.mockImplementation((quote?: string) => Promise.resolve({
-      symbols: quote === 'USD' ? ['BTC/USD', 'ETH/USD', 'SOL/USD', 'ADA/USD'] : ['BTC/MXN'],
-    }));
-    paperWallet.mockResolvedValue({
-      starting_balance: 100,
-      deployed: 0,
-      in_market: 0,
-      available: 75,
-      balances: {
-        MXN: { starting_balance: 100, deployed: 0, in_market: 0, available: 75 },
-        BTC: { starting_balance: 0.01, deployed: 0, in_market: 0, available: 0.01 },
-        USD: { starting_balance: 250, deployed: 0, in_market: 0, available: 250 },
-        USDT: { starting_balance: 250, deployed: 0, in_market: 0, available: 250 },
-      },
-    });
-    analyze.mockResolvedValue({ pairs: [{ symbol: 'BTC/USD', score: 81, strategy: 'adaptive', reason: 'Strong buy setup' }] });
-    deploy.mockResolvedValue({
-      agent_ids: ['a1'],
-      total_budget: 250,
-      pairs: [{ symbol: 'BTC/USD', budget_allocated: 250 }],
-    });
-
-    render(<AutoTradeModal {...defaultProps} />);
-    fireEvent.change(screen.getByLabelText(/Quote currency/i), { target: { value: 'USD' } });
+    render(<DeployPanel {...defaultProps} />);
+    await waitFor(() => screen.getByText(/Start Trading/i));
     fireEvent.click(screen.getByText(/Start Trading/i));
 
     await waitFor(() => expect(analyze).toHaveBeenCalledWith(0, 'USD'));
@@ -187,127 +101,29 @@ describe('AutoTradeModal', () => {
   it('shows error message when deploy fails', async () => {
     const analyze = apiMock.analyzeMarket as ReturnType<typeof vi.fn>;
     analyze.mockRejectedValue(new Error('Network error'));
-    render(<AutoTradeModal {...defaultProps} />);
+    render(<DeployPanel {...defaultProps} />);
+    await waitFor(() => screen.getByText(/Start Trading/i));
     fireEvent.click(screen.getByText(/Start Trading/i));
     await waitFor(() => expect(screen.getByText(/Network error/i)).toBeInTheDocument());
-  });
-
-  it('shows the analyzed markets and reasoning while deployment is in progress', async () => {
-    const analyze = apiMock.analyzeMarket as ReturnType<typeof vi.fn>;
-    const deploy = apiMock.deployPortfolio as ReturnType<typeof vi.fn>;
-    const markets = apiMock.getMarkets as ReturnType<typeof vi.fn>;
-
-    markets.mockResolvedValue({
-      symbols: ['AVAX/MXN', 'BTC/MXN', 'ETH/MXN', 'USDT/MXN', 'SOL/MXN', 'ADA/MXN'],
-    });
-
-    let finishAnalysis: ((value: { pairs: Array<Record<string, unknown>>; total_markets?: number }) => void) | undefined;
-    analyze.mockReturnValue(new Promise(resolve => {
-      finishAnalysis = resolve;
-    }));
-
-    const analyzedPairs = {
-      total_markets: 6,
-      pairs: [
-        {
-          symbol: 'AVAX/MXN',
-          score: 82,
-          strategy: 'trend_rsi',
-          reason: 'Buy signal active — uptrend + RSI pullback + volume support',
-          action: 'BUY SIGNAL',
-          confidence: 0.74,
-        },
-        {
-          symbol: 'BTC/MXN',
-          score: 61,
-          strategy: 'adaptive',
-          reason: 'Waiting for a stronger pullback',
-          action: 'WAITING',
-          confidence: 0.21,
-        },
-        {
-          symbol: 'ETH/MXN',
-          score: 58,
-          strategy: 'adaptive',
-          reason: 'Watching for stronger momentum',
-          action: 'WAITING',
-          confidence: 0.18,
-        },
-        {
-          symbol: 'USDT/MXN',
-          score: 54,
-          strategy: 'trend_rsi',
-          reason: 'Flat structure, low urgency',
-          action: 'WAITING',
-          confidence: 0.14,
-        },
-        {
-          symbol: 'SOL/MXN',
-          score: 53,
-          strategy: 'trend_rsi',
-          reason: 'Healthy pullback but needs confirmation',
-          action: 'WAITING',
-          confidence: 0.16,
-        },
-        {
-          symbol: 'ADA/MXN',
-          score: 49,
-          strategy: 'rsi',
-          reason: 'Still below trigger',
-          action: 'WAITING',
-          confidence: 0.11,
-        },
-      ],
-    };
-
-    let finishDeploy: ((value: { agent_ids: string[]; total_budget: number; pairs: { symbol: string; budget_allocated: number }[] }) => void) | undefined;
-    deploy.mockReturnValue(new Promise(resolve => {
-      finishDeploy = resolve;
-    }));
-
-    render(<AutoTradeModal {...defaultProps} />);
-    fireEvent.click(screen.getByText(/Start Trading/i));
-
-    await waitFor(() => expect(screen.getByText(/Markets in this scan/i)).toBeInTheDocument());
-    expect(screen.getByText('AVAX/MXN')).toBeInTheDocument();
-    expect(screen.getByText('BTC/MXN')).toBeInTheDocument();
-    expect(screen.getByText('ETH/MXN')).toBeInTheDocument();
-    expect(screen.getByText('USDT/MXN')).toBeInTheDocument();
-    expect(screen.getByText('SOL/MXN')).toBeInTheDocument();
-    expect(screen.getByText('ADA/MXN')).toBeInTheDocument();
-
-    finishAnalysis?.(analyzedPairs);
-
-    await waitFor(() => expect(screen.getByText(/Markets reviewed/i)).toBeInTheDocument());
-    expect(screen.getByText(/Showing all 6/i)).toBeInTheDocument();
-    expect(screen.getByText(/Buy signal active — uptrend \+ RSI pullback \+ volume support/i)).toBeInTheDocument();
-    expect(screen.getByText('SOL/MXN')).toBeInTheDocument();
-    expect(screen.getByText('ADA/MXN')).toBeInTheDocument();
-    expect(screen.getAllByText(/WAITING/i).length).toBeGreaterThan(0);
-
-    finishDeploy?.({
-      agent_ids: ['a1'],
-      total_budget: 100,
-      pairs: [{ symbol: 'AVAX/MXN', budget_allocated: 100 }],
-    });
-
-    await waitFor(() => expect(screen.getByText(/Agents started/i)).toBeInTheDocument());
   });
 
   it('shows success state after deploy', async () => {
     const analyze = apiMock.analyzeMarket as ReturnType<typeof vi.fn>;
     const deploy = apiMock.deployPortfolio as ReturnType<typeof vi.fn>;
+    const markets = apiMock.getMarkets as ReturnType<typeof vi.fn>;
+    markets.mockResolvedValue({ symbols: ['BTC/USD', 'ETH/USD'] });
     analyze.mockResolvedValue({ pairs: [] });
     deploy.mockResolvedValue({
       agent_ids: ['a1', 'a2'],
       total_budget: 100,
       pairs: [
-        { symbol: 'XRP/MXN', budget_allocated: 50 },
-        { symbol: 'SOL/MXN', budget_allocated: 50 },
+        { symbol: 'BTC/USD', budget_allocated: 50 },
+        { symbol: 'ETH/USD', budget_allocated: 50 },
       ],
     });
 
-    render(<AutoTradeModal {...defaultProps} />);
+    render(<DeployPanel {...defaultProps} />);
+    await waitFor(() => screen.getByText(/Start Trading/i));
     fireEvent.click(screen.getByText(/Start Trading/i));
     await waitFor(() => expect(screen.getByText(/Agents started/i)).toBeInTheDocument());
     expect(screen.getByText(/2 pairs/i)).toBeInTheDocument();
@@ -534,10 +350,10 @@ describe('WalletHeader', () => {
     await waitFor(() => expect(screen.getByText('PAPER')).toBeInTheDocument());
   });
 
-  it('calls onAvailableChange with wallet available amount', async () => {
+  it('calls onAvailableChange with USD wallet available amount', async () => {
     const onAvailableChange = vi.fn();
     render(<WalletHeader onAvailableChange={onAvailableChange} />);
-    await waitFor(() => expect(onAvailableChange).toHaveBeenCalledWith(75));
+    await waitFor(() => expect(onAvailableChange).toHaveBeenCalledWith(250));
   });
 
   it('opens dropdown when pill is clicked', async () => {

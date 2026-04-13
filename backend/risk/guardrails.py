@@ -9,12 +9,14 @@ class RiskGuardrails:
         max_trades_per_day: int,
         max_losses_per_day: int = 3,
         max_daily_loss_pct: float = 0.05,
+        position_size_pct: float = 0.25,
     ):
         self.budget = budget
         self.stop_loss_pct = stop_loss_pct
         self.max_trades_per_day = max_trades_per_day
         self.max_losses_per_day = max_losses_per_day
         self.max_daily_loss_pct = max_daily_loss_pct
+        self.position_size_pct = max(0.05, min(0.80, float(position_size_pct or 0.25)))
 
     def can_trade(self, agent_state) -> tuple[bool, str]:
         if agent_state.status == "killed":
@@ -65,7 +67,7 @@ class RiskGuardrails:
 
         min_amount = MIN_ORDER_AMOUNT.get(symbol, DEFAULT_MIN_AMOUNT)
 
-        trade_budget = available_budget * 0.25
+        trade_budget = available_budget * self.position_size_pct
         amount = trade_budget / price
         amount = round(amount, 8)
 
@@ -91,7 +93,8 @@ class RiskGuardrails:
 
         min_amount = MIN_ORDER_AMOUNT.get(symbol, DEFAULT_MIN_AMOUNT)
 
-        effective_pct = 0.15 + max(0.0, min(confidence, 1.0)) * 0.20
+        base_pct = self.position_size_pct
+        effective_pct = (base_pct * 0.6) + max(0.0, min(confidence, 1.0)) * (base_pct * 0.8)
         trade_budget = available_budget * effective_pct
         amount = trade_budget / price
         amount = round(amount, 8)

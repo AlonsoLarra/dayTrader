@@ -509,10 +509,11 @@ class AgentOrchestrator:
                 exchange = create_exchange(budget=state.budget_allocated, symbol=state.symbol)
                 guardrails = RiskGuardrails(
                     state.budget_allocated,
-                    settings.STOP_LOSS_PCT,
+                    getattr(state, 'stop_loss_pct', None) or settings.STOP_LOSS_PCT,
                     settings.MAX_TRADES_PER_DAY,
                     settings.MAX_LOSSES_PER_DAY,
                     settings.MAX_DAILY_LOSS_PCT,
+                    position_size_pct=getattr(state, 'position_size_pct', None) or 0.25,
                 )
                 agent = TradingAgent(
                     state.agent_id,
@@ -567,6 +568,8 @@ class AgentOrchestrator:
         aggressive_rotation: bool = False,
         rotation_interval_minutes: int = 1,
         min_rotation_score_delta: float = 1.0,
+        stop_loss_pct: float = None,
+        position_size_pct: float = 0.25,
     ) -> str:
         symbol = symbol or settings.TRADING_PAIR
         quote_currency = _normalize_quote_currency(
@@ -597,12 +600,15 @@ class AgentOrchestrator:
         agent_id = str(uuid.uuid4())[:8]
         strategy = strategy_cls(params)
         exchange = create_exchange(budget=budget, symbol=symbol)
+        resolved_stop_loss_pct = stop_loss_pct if stop_loss_pct is not None else settings.STOP_LOSS_PCT
+        resolved_position_size_pct = float(position_size_pct or 0.25)
         guardrails = RiskGuardrails(
             budget,
-            settings.STOP_LOSS_PCT,
+            resolved_stop_loss_pct,
             settings.MAX_TRADES_PER_DAY,
             settings.MAX_LOSSES_PER_DAY,
             settings.MAX_DAILY_LOSS_PCT,
+            position_size_pct=resolved_position_size_pct,
         )
 
         agent = TradingAgent(
@@ -642,6 +648,8 @@ class AgentOrchestrator:
                     min_rotation_score_delta=min_rotation_score_delta,
                     symbol=symbol,
                     quote_currency=quote_currency,
+                    stop_loss_pct=resolved_stop_loss_pct,
+                    position_size_pct=resolved_position_size_pct,
                     created_at=datetime.utcnow(),
                     updated_at=datetime.utcnow(),
                 )

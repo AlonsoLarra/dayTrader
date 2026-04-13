@@ -32,6 +32,7 @@ _log = logging.getLogger("auto_watcher")
 AUTO_WATCHER_INTERVAL_SECONDS = 60
 AUTO_WATCHER_MIN_SCORE = 30.0
 AUTO_WATCHER_MAX_AGENTS = 3
+AUTO_WATCHER_QUOTE = "USD"
 STARTUP_INIT_TIMEOUT_SECONDS = 8
 STARTUP_INIT_RETRIES = 2
 STARTUP_INIT_RETRY_DELAY_SECONDS = 2
@@ -74,12 +75,8 @@ async def _auto_trade_watcher():
                     await asyncio.sleep(AUTO_WATCHER_INTERVAL_SECONDS)
                     continue
 
-                quote_currency = (
-                    settings.TRADING_PAIR.split("/")[-1]
-                    if "/" in settings.TRADING_PAIR
-                    else "MXN"
-                ).upper()
-                min_budget = 0.0001 if quote_currency == "BTC" else 10.0
+                quote_currency = AUTO_WATCHER_QUOTE
+                min_budget = 0.0001 if quote_currency == "BTC" else 5.0
 
                 # Lazy import to avoid circular dependency at module load time
                 from routers.settings import get_available_budget

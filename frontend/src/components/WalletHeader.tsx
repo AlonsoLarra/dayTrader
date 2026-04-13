@@ -21,7 +21,7 @@ export function WalletHeader({ onAvailableChange }: Props) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState(false);
-  const [selectedQuote, setSelectedQuote] = useState<'MXN' | 'BTC' | 'USD' | 'USDT'>('MXN');
+  const [selectedQuote, setSelectedQuote] = useState<'MXN' | 'BTC' | 'USD' | 'USDT'>('USD');
   const ref = useRef<HTMLDivElement>(null);
 
   const loadPaperWallet = useCallback(async () => {

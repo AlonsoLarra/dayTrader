@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { Download } from 'lucide-react';
 import clsx from 'clsx';
 import type { Trade } from '../types';
+import { exportTrades } from '../api/client';
 
 interface Props {
   trades: Trade[];
@@ -9,6 +11,7 @@ interface Props {
 export function TradeLog({ trades }: Props) {
   const [filterSide, setFilterSide] = useState<'all' | 'buy' | 'sell'>('all');
   const [filterStrategy, setFilterStrategy] = useState('all');
+  const [exporting, setExporting] = useState(false);
 
   const strategies = ['all', ...Array.from(new Set(trades.map(t => t.strategy)))];
   const filtered = trades.filter(t => {
@@ -17,9 +20,26 @@ export function TradeLog({ trades }: Props) {
     return true;
   });
 
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const blob = await exportTrades(30);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `daytrader_export_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      /* ignore */
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div>
-      <div className="flex gap-4 mb-4 flex-wrap">
+      <div className="flex gap-4 mb-4 flex-wrap items-center">
         <div className="flex items-center gap-2">
           <span className="text-gray-400 text-sm">Side:</span>
           {(['all', 'buy', 'sell'] as const).map(s => (
@@ -50,6 +70,15 @@ export function TradeLog({ trades }: Props) {
             </button>
           ))}
         </div>
+        <button
+          onClick={handleExport}
+          disabled={exporting || trades.length === 0}
+          className="ml-auto flex items-center gap-1.5 px-3 py-2 min-h-[40px] bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-gray-300 text-sm rounded transition-colors"
+          title="Export trades as JSON for LLM analysis"
+        >
+          <Download size={13} />
+          {exporting ? 'Exporting…' : 'Export Log'}
+        </button>
       </div>
 
       <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
