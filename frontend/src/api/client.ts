@@ -145,6 +145,18 @@ export const setPaperWallet = (starting_balance: number, currency = 'USD') =>
     currency,
   }).then(r => r.data);
 
+export interface RiskConfig {
+  max_losses_per_day: number;
+  max_daily_loss_pct: number;
+  max_trades_per_day: number;
+}
+
+export const getRiskConfig = () =>
+  api.get<RiskConfig>('/settings/risk-config').then(r => r.data);
+
+export const updateRiskConfig = (data: RiskConfig) =>
+  api.put<{ status: string }>('/settings/risk-config', data).then(r => r.data);
+
 export interface BotReasoning {
   agent_id: string;
   symbol: string;

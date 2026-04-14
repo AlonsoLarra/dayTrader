@@ -87,4 +87,18 @@ class PaperWallet(Base):
     btc_balance: Mapped[float] = mapped_column(Float, nullable=False, default=0.01)
     usd_balance: Mapped[float] = mapped_column(Float, nullable=False, default=100.0)
     usdt_balance: Mapped[float] = mapped_column(Float, nullable=False, default=100.0)
+    realized_pnl_banked_mxn: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    realized_pnl_banked_btc: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    realized_pnl_banked_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    realized_pnl_banked_usdt: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class RiskConfig(Base):
+    __tablename__ = "risk_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    max_losses_per_day: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    max_daily_loss_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.05)
+    max_trades_per_day: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

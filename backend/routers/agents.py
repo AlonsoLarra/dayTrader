@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -6,7 +7,7 @@ from typing import Optional
 import ccxt
 
 from database import get_db
-from models import AgentState, AgentLog, Trade
+from models import AgentState, AgentLog, Trade, PaperWallet
 from routers.settings import get_available_budget
 from agents.orchestrator import orchestrator
 from exchange.client import get_available_symbols
@@ -221,13 +222,36 @@ async def force_sell(agent_id: str):
 
 @router.delete("/{agent_id}")
 async def delete_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
-    """Remove a killed agent from the database entirely."""
+    """Remove a killed agent from the database, banking its realized P&L into the wallet first."""
     result = await db.execute(select(AgentState).where(AgentState.agent_id == agent_id))
     state = result.scalar_one_or_none()
     if not state:
         raise HTTPException(status_code=404, detail="Agent not found")
     if state.status not in ("killed", "stopped"):
         raise HTTPException(status_code=400, detail="Only killed or stopped agents can be deleted")
+
+    # Bank this agent's total realized P&L into the wallet before removing its AgentState.
+    # This prevents the balance from resetting when an agent is deleted.
+    pnl_result = await db.execute(
+        select(func.sum(Trade.pnl))
+        .where(Trade.agent_id == agent_id, Trade.pnl.is_not(None))
+    )
+    total_pnl = float(pnl_result.scalar() or 0.0)
+    if total_pnl != 0.0:
+        wallet_result = await db.execute(select(PaperWallet).limit(1))
+        wallet = wallet_result.scalar_one_or_none()
+        if wallet:
+            col_map = {
+                "MXN": "realized_pnl_banked_mxn",
+                "BTC": "realized_pnl_banked_btc",
+                "USD": "realized_pnl_banked_usd",
+                "USDT": "realized_pnl_banked_usdt",
+            }
+            quote = (getattr(state, "quote_currency", None) or "MXN").upper()
+            col = col_map.get(quote, "realized_pnl_banked_mxn")
+            setattr(wallet, col, float(getattr(wallet, col, 0.0) or 0.0) + total_pnl)
+            wallet.updated_at = datetime.utcnow()
+
     await db.delete(state)
     await db.commit()
     # Also remove from orchestrator memory

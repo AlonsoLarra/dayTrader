@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from config import settings
 from exchange.client import create_exchange, get_balance
 from database import get_db
-from models import PaperWallet, AgentState, Trade
+from models import PaperWallet, AgentState, Trade, RiskConfig
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -29,6 +29,19 @@ def _get_starting_balance_for_quote(wallet: PaperWallet, quote_currency: str) ->
         "USDT": "usdt_balance",
     }
     return float(getattr(wallet, attribute_map.get(quote, "starting_balance"), 0.0) or 0.0)
+
+
+_BANKED_COLUMN_MAP = {
+    "MXN": "realized_pnl_banked_mxn",
+    "BTC": "realized_pnl_banked_btc",
+    "USD": "realized_pnl_banked_usd",
+    "USDT": "realized_pnl_banked_usdt",
+}
+
+
+def _get_banked_pnl(wallet: PaperWallet, quote_currency: str) -> float:
+    col = _BANKED_COLUMN_MAP.get(quote_currency, "realized_pnl_banked_mxn")
+    return float(getattr(wallet, col, 0.0) or 0.0)
 
 
 def _set_starting_balance_for_quote(wallet: PaperWallet, quote_currency: str, amount: float) -> None:
@@ -87,7 +100,7 @@ async def _get_wallet_snapshot(db: AsyncSession, quote_currency: str = "MXN"):
             "starting_balance": _get_starting_balance_for_quote(wallet, quote),
             "deployed": 0.0,
             "in_market": 0.0,
-            "realized_pnl": 0.0,
+            "realized_pnl": _get_banked_pnl(wallet, quote),
             "available": _get_starting_balance_for_quote(wallet, quote),
         }
         for quote in SUPPORTED_PAPER_QUOTES
@@ -187,6 +200,58 @@ async def set_paper_wallet(body: PaperWalletUpdate, db: AsyncSession = Depends(g
 
     await db.commit()
     return {"currency": normalized_quote, "starting_balance": _get_starting_balance_for_quote(wallet, normalized_quote)}
+
+
+class RiskConfigSchema(BaseModel):
+    max_losses_per_day: int
+    max_daily_loss_pct: float
+    max_trades_per_day: int
+
+
+@router.get("/risk-config")
+async def get_risk_config(db: AsyncSession = Depends(get_db)):
+    """Return the current risk limits used for new agents."""
+    result = await db.execute(select(RiskConfig).limit(1))
+    cfg = result.scalar_one_or_none()
+    if not cfg:
+        return RiskConfigSchema(
+            max_losses_per_day=settings.MAX_LOSSES_PER_DAY,
+            max_daily_loss_pct=settings.MAX_DAILY_LOSS_PCT,
+            max_trades_per_day=settings.MAX_TRADES_PER_DAY,
+        )
+    return RiskConfigSchema(
+        max_losses_per_day=cfg.max_losses_per_day,
+        max_daily_loss_pct=cfg.max_daily_loss_pct,
+        max_trades_per_day=cfg.max_trades_per_day,
+    )
+
+
+@router.put("/risk-config")
+async def update_risk_config(body: RiskConfigSchema, db: AsyncSession = Depends(get_db)):
+    """Update the risk limits applied to newly created agents."""
+    if body.max_losses_per_day < 1:
+        raise HTTPException(status_code=400, detail="max_losses_per_day must be >= 1")
+    if not (0.001 <= body.max_daily_loss_pct <= 1.0):
+        raise HTTPException(status_code=400, detail="max_daily_loss_pct must be between 0.1% and 100%")
+    if body.max_trades_per_day < 1:
+        raise HTTPException(status_code=400, detail="max_trades_per_day must be >= 1")
+    result = await db.execute(select(RiskConfig).limit(1))
+    cfg = result.scalar_one_or_none()
+    if cfg:
+        cfg.max_losses_per_day = body.max_losses_per_day
+        cfg.max_daily_loss_pct = body.max_daily_loss_pct
+        cfg.max_trades_per_day = body.max_trades_per_day
+        cfg.updated_at = datetime.utcnow()
+    else:
+        cfg = RiskConfig(
+            max_losses_per_day=body.max_losses_per_day,
+            max_daily_loss_pct=body.max_daily_loss_pct,
+            max_trades_per_day=body.max_trades_per_day,
+            updated_at=datetime.utcnow(),
+        )
+        db.add(cfg)
+    await db.commit()
+    return {"status": "updated"}
 
 
 @router.get("/wallet")
