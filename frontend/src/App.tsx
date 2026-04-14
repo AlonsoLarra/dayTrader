@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, Activity, FileText, BarChart2, LogOut, Menu, X } from 'lucide-react';
+import { TrendingUp, Activity, FileText, BarChart2, Settings, LogOut, Menu, X } from 'lucide-react';
 import clsx from 'clsx';
 import { Dashboard } from './components/Dashboard';
 import { BacktestPanel } from './components/BacktestPanel';
@@ -9,11 +9,12 @@ import { KillSwitch } from './components/KillSwitch';
 import { PriceBoard } from './components/PriceBoard';
 import { WalletHeader } from './components/WalletHeader';
 import { LoginScreen } from './components/LoginScreen';
+import { ConfigScreen } from './components/ConfigScreen';
 import { useWebSocket } from './hooks/useWebSocket';
 import { getTrades, getAgents, getPaperWallet, getTradeSummary } from './api/client';
 import type { Trade, Agent, TradeSummary } from './types';
 
-type Tab = 'dashboard' | 'backtest' | 'logs';
+type Tab = 'dashboard' | 'backtest' | 'logs' | 'config';
 
 export default function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('daytrader_token'));
@@ -85,6 +86,7 @@ export default function App() {
     { id: 'dashboard', label: 'Dashboard', icon: <Activity size={16} /> },
     { id: 'backtest', label: 'Strategy', icon: <BarChart2 size={16} /> },
     { id: 'logs', label: 'Trades', icon: <FileText size={16} /> },
+    { id: 'config', label: 'Config', icon: <Settings size={16} /> },
   ];
 
   if (!token) {
@@ -177,6 +179,7 @@ export default function App() {
             </div>
           </div>
         )}
+        {tab === 'config' && <ConfigScreen />}
       </main>
 
       {/* ── Mobile bottom nav ── */}

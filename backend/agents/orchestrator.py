@@ -327,6 +327,19 @@ async def assess_market_opportunity(exchange, symbol: str, timeframe: str = "15m
         }
 
 
+async def _load_risk_config(session) -> tuple:
+    """Load risk limits from DB, falling back to settings.py defaults."""
+    from models import RiskConfig as RiskConfigModel
+    try:
+        result = await session.execute(select(RiskConfigModel).limit(1))
+        cfg = result.scalar_one_or_none()
+        if cfg:
+            return cfg.max_losses_per_day, cfg.max_daily_loss_pct, cfg.max_trades_per_day
+    except Exception:
+        pass
+    return settings.MAX_LOSSES_PER_DAY, settings.MAX_DAILY_LOSS_PCT, settings.MAX_TRADES_PER_DAY
+
+
 async def _validate_agent_creation(session, symbol: str, budget: float, quote_currency: str = "MXN") -> None:
     """Guard against duplicate pair allocation and wallet oversubscription for the selected quote wallet."""
     normalized_quote = _normalize_quote_currency(
@@ -388,8 +401,15 @@ async def _validate_agent_creation(session, symbol: str, budget: float, quote_cu
         "USD": "usd_balance",
         "USDT": "usdt_balance",
     }
+    banked_col_map = {
+        "MXN": "realized_pnl_banked_mxn",
+        "BTC": "realized_pnl_banked_btc",
+        "USD": "realized_pnl_banked_usd",
+        "USDT": "realized_pnl_banked_usdt",
+    }
     starting_balance = float(getattr(wallet, attribute_map.get(normalized_quote, "starting_balance"), 0.0) or 0.0)
-    available = max(0.0, starting_balance + total_realized_pnl - deployed)
+    banked_pnl = float(getattr(wallet, banked_col_map.get(normalized_quote, "realized_pnl_banked_mxn"), 0.0) or 0.0)
+    available = max(0.0, starting_balance + banked_pnl + total_realized_pnl - deployed)
     if float(budget or 0.0) > available + 1e-9:
         precision = 8 if normalized_quote == "BTC" else 2
         raise ValueError(
@@ -501,6 +521,7 @@ class AgentOrchestrator:
                 return
 
             states = result.scalars().all()
+            max_losses, max_loss_pct, max_trades = await _load_risk_config(session)
             for state in states:
                 strategy_cls = STRATEGY_MAP.get(state.strategy)
                 if not strategy_cls:
@@ -510,9 +531,9 @@ class AgentOrchestrator:
                 guardrails = RiskGuardrails(
                     state.budget_allocated,
                     getattr(state, 'stop_loss_pct', None) or settings.STOP_LOSS_PCT,
-                    settings.MAX_TRADES_PER_DAY,
-                    settings.MAX_LOSSES_PER_DAY,
-                    settings.MAX_DAILY_LOSS_PCT,
+                    max_trades,
+                    max_losses,
+                    max_loss_pct,
                     position_size_pct=getattr(state, 'position_size_pct', None) or 0.25,
                 )
                 agent = TradingAgent(
@@ -602,28 +623,6 @@ class AgentOrchestrator:
         exchange = create_exchange(budget=budget, symbol=symbol)
         resolved_stop_loss_pct = stop_loss_pct if stop_loss_pct is not None else settings.STOP_LOSS_PCT
         resolved_position_size_pct = float(position_size_pct or 0.25)
-        guardrails = RiskGuardrails(
-            budget,
-            resolved_stop_loss_pct,
-            settings.MAX_TRADES_PER_DAY,
-            settings.MAX_LOSSES_PER_DAY,
-            settings.MAX_DAILY_LOSS_PCT,
-            position_size_pct=resolved_position_size_pct,
-        )
-
-        agent = TradingAgent(
-            agent_id,
-            strategy,
-            exchange,
-            guardrails,
-            AsyncSessionLocal,
-            symbol=symbol,
-            rotation_enabled=rotation_enabled,
-            aggressive_rotation=aggressive_rotation,
-            rotation_interval_minutes=rotation_interval_minutes,
-            min_rotation_score_delta=min_rotation_score_delta,
-        )
-        agent._broadcaster = self._broadcaster
 
         current_loop = asyncio.get_running_loop()
         if self._create_lock is None or self._create_lock_loop is not current_loop:
@@ -633,6 +632,28 @@ class AgentOrchestrator:
         async with self._create_lock:
             async with AsyncSessionLocal() as session:
                 await _validate_agent_creation(session, symbol, budget, quote_currency=quote_currency)
+                max_losses, max_loss_pct, max_trades = await _load_risk_config(session)
+                guardrails = RiskGuardrails(
+                    budget,
+                    resolved_stop_loss_pct,
+                    max_trades,
+                    max_losses,
+                    max_loss_pct,
+                    position_size_pct=resolved_position_size_pct,
+                )
+                agent = TradingAgent(
+                    agent_id,
+                    strategy,
+                    exchange,
+                    guardrails,
+                    AsyncSessionLocal,
+                    symbol=symbol,
+                    rotation_enabled=rotation_enabled,
+                    aggressive_rotation=aggressive_rotation,
+                    rotation_interval_minutes=rotation_interval_minutes,
+                    min_rotation_score_delta=min_rotation_score_delta,
+                )
+                agent._broadcaster = self._broadcaster
                 state = AgentState(
                     agent_id=agent_id,
                     strategy=strategy_name,

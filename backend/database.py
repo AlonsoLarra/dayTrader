@@ -72,6 +72,17 @@ def _migrate_schema(conn):
         )""",
         "ALTER TABLE agent_states ADD COLUMN stop_loss_pct REAL",
         "ALTER TABLE agent_states ADD COLUMN position_size_pct REAL",
+        "ALTER TABLE paper_wallet ADD COLUMN realized_pnl_banked_mxn  REAL DEFAULT 0.0",
+        "ALTER TABLE paper_wallet ADD COLUMN realized_pnl_banked_btc  REAL DEFAULT 0.0",
+        "ALTER TABLE paper_wallet ADD COLUMN realized_pnl_banked_usd  REAL DEFAULT 0.0",
+        "ALTER TABLE paper_wallet ADD COLUMN realized_pnl_banked_usdt REAL DEFAULT 0.0",
+        """CREATE TABLE IF NOT EXISTS risk_config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            max_losses_per_day INTEGER NOT NULL DEFAULT 3,
+            max_daily_loss_pct REAL NOT NULL DEFAULT 0.05,
+            max_trades_per_day INTEGER NOT NULL DEFAULT 10,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
     ]
     def _run_safe(sql: str) -> None:
         try:
@@ -93,6 +104,26 @@ def _migrate_schema(conn):
         "UPDATE agent_states SET min_rotation_score_delta = 1.0 "
         "WHERE rotation_enabled = 1 AND (min_rotation_score_delta IS NULL OR min_rotation_score_delta = 8.0)"
     )
+    # Seed the single risk_config row if it doesn't exist yet
+    _run_safe(
+        "INSERT INTO risk_config (max_losses_per_day, max_daily_loss_pct, max_trades_per_day, updated_at) "
+        "SELECT 3, 0.05, 10, CURRENT_TIMESTAMP "
+        "WHERE NOT EXISTS (SELECT 1 FROM risk_config)"
+    )
+    # Backfill banked P&L from trades of agents that were already deleted
+    for _quote, _col in [
+        ("MXN", "realized_pnl_banked_mxn"),
+        ("BTC", "realized_pnl_banked_btc"),
+        ("USD", "realized_pnl_banked_usd"),
+        ("USDT", "realized_pnl_banked_usdt"),
+    ]:
+        _run_safe(
+            f"UPDATE paper_wallet SET {_col} = COALESCE("
+            f"  (SELECT SUM(t.pnl) FROM trades t"
+            f"   WHERE t.quote_currency = '{_quote}' AND t.pnl IS NOT NULL"
+            f"   AND t.agent_id NOT IN (SELECT agent_id FROM agent_states)"
+            f"), 0.0) WHERE {_col} = 0.0"
+        )
 
 
 async def get_db():
