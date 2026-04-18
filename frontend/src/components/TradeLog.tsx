@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Download } from 'lucide-react';
 import clsx from 'clsx';
 import type { Trade } from '../types';
-import { exportTrades } from '../api/client';
 
 interface Props {
   trades: Trade[];
@@ -11,8 +10,6 @@ interface Props {
 export function TradeLog({ trades }: Props) {
   const [filterSide, setFilterSide] = useState<'all' | 'buy' | 'sell'>('all');
   const [filterStrategy, setFilterStrategy] = useState('all');
-  const [exporting, setExporting] = useState(false);
-
   const strategies = ['all', ...Array.from(new Set(trades.map(t => t.strategy)))];
   const filtered = trades.filter(t => {
     if (filterSide !== 'all' && t.side !== filterSide) return false;
@@ -20,23 +17,12 @@ export function TradeLog({ trades }: Props) {
     return true;
   });
 
-  async function handleExport() {
-    setExporting(true);
-    try {
-      const blob = await exportTrades(30);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `daytrader_export_${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 100);
-    } catch {
-      /* ignore */
-    } finally {
-      setExporting(false);
-    }
+  function handleExport() {
+    const token = localStorage.getItem('daytrader_token');
+    const base = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+    const params = new URLSearchParams({ limit_days: '30' });
+    if (token) params.set('token', token);
+    window.open(`${base}/trades/export?${params}`, '_blank');
   }
 
   return (
@@ -74,12 +60,12 @@ export function TradeLog({ trades }: Props) {
         </div>
         <button
           onClick={handleExport}
-          disabled={exporting || trades.length === 0}
+          disabled={trades.length === 0}
           className="ml-auto flex items-center gap-1.5 px-3 py-2 min-h-[40px] bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-gray-300 text-sm rounded transition-colors"
           title="Export trades as JSON for LLM analysis"
         >
           <Download size={13} />
-          {exporting ? 'Exporting…' : 'Export Log'}
+          Export Log
         </button>
       </div>
 

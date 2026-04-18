@@ -299,10 +299,14 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
+    # Accept token as query param for download endpoints (iOS Safari ignores
+    # the download attribute and can't send headers on direct navigation).
+    if auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1]
+    elif token := request.query_params.get("token"):
+        pass
+    else:
         return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
-
-    token = auth_header.split(" ", 1)[1]
     try:
         payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
         email = str(payload.get("sub", "")).strip().lower()
