@@ -28,8 +28,10 @@ export function TradeLog({ trades }: Props) {
       const a = document.createElement('a');
       a.href = url;
       a.download = `daytrader_export_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch {
       /* ignore */
     } finally {
