@@ -25,6 +25,14 @@ run_suite "Backend unit tests" \
 run_suite "Backend API tests" \
   bash -c "cd '$SCRIPT_DIR/backend' && PYTHONPATH='$SCRIPT_DIR/backend' .venv/bin/pytest tests/test_api.py -v --tb=short -q"
 
+# ── Backend: backtester unit tests (Phase 0) ──────────────────────────────
+run_suite "Backend backtester tests" \
+  bash -c "cd '$SCRIPT_DIR/backend' && PYTHONPATH='$SCRIPT_DIR/backend' .venv/bin/pytest tests/test_backtester.py -v --tb=short -q"
+
+# ── Backend: strict typing on new backtester code (Phase 0) ───────────────
+run_suite "Backend mypy --strict (backtester)" \
+  bash -c "cd '$SCRIPT_DIR/backend' && .venv/bin/mypy --config-file mypy.ini -p backtester"
+
 # ── Frontend: TypeScript compile check ────────────────────────────────────
 run_suite "Frontend TypeScript" \
   bash -c "cd '$SCRIPT_DIR/frontend' && npx tsc --noEmit 2>&1"

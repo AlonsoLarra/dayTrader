@@ -6,6 +6,7 @@ from strategies.rsi import RSIStrategy
 from strategies.trend_rsi import TrendRSIStrategy
 from strategies.adaptive import AdaptiveStrategy
 from backtester.runner import BacktestRunner
+from backtester.walk_forward import WalkForwardBacktester
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 
@@ -45,3 +46,27 @@ async def run_backtest(req: BacktestRequest):
         initial_capital=req.initial_capital,
     )
     return result
+
+
+class WalkForwardRequest(BacktestRequest):
+    n_folds: int = 4
+
+
+@router.post("/walk-forward")
+async def run_walk_forward(req: WalkForwardRequest):
+    strategy_cls = STRATEGY_MAP.get(req.strategy)
+    if not strategy_cls:
+        return {"error": f"Unknown strategy: {req.strategy}"}
+
+    strategy = strategy_cls(req.params)
+    backtester = WalkForwardBacktester()
+
+    return await backtester.run(
+        strategy=strategy,
+        symbol=req.symbol,
+        timeframe=req.timeframe,
+        start_date=req.start_date,
+        end_date=req.end_date,
+        initial_capital=req.initial_capital,
+        n_folds=req.n_folds,
+    )
