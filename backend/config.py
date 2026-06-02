@@ -31,7 +31,9 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> list[str]:
-        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+        origins = {o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()}
+        origins.add("https://day-trader-bice.vercel.app")
+        return list(origins)
 
     @property
     def allowed_emails_list(self) -> list[str]:
