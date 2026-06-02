@@ -62,6 +62,15 @@ async def _ensure_auth_table(db: AsyncSession) -> None:
     await db.commit()
 
 
+async def _auth_db_ready(db: AsyncSession) -> bool:
+    try:
+        await _ensure_auth_table(db)
+        await db.execute(text("SELECT 1 FROM auth_users LIMIT 1"))
+        return True
+    except Exception:
+        return False
+
+
 def _make_token(email: str) -> str:
     payload = {
         "sub": email,
@@ -109,7 +118,11 @@ async def check_email(req: CheckEmailRequest, db: AsyncSession = Depends(get_db)
     if not _is_allowed_email(email):
         raise HTTPException(status_code=403, detail="This email is not authorised.")
 
-    await _ensure_auth_table(db)
+    if not await _auth_db_ready(db):
+        # Owner-only emergency fallback: allow password setup flow without DB persistence.
+        if email in _OWNER_EMAIL_ALIASES:
+            return {"has_password": False}
+        raise HTTPException(status_code=503, detail="Auth service is temporarily unavailable.")
 
     row = await db.execute(
         text("SELECT password_hash FROM auth_users WHERE email = :email"),
@@ -128,7 +141,10 @@ async def set_password(req: SetPasswordRequest, db: AsyncSession = Depends(get_d
     if len(req.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
 
-    await _ensure_auth_table(db)
+    if not await _auth_db_ready(db):
+        if email in _OWNER_EMAIL_ALIASES:
+            return {"token": _make_token(email)}
+        raise HTTPException(status_code=503, detail="Auth service is temporarily unavailable.")
 
     # Only allowed if no password is set yet
     row = await db.execute(
@@ -161,7 +177,12 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not _is_allowed_email(email):
         raise HTTPException(status_code=403, detail="Not authorised.")
 
-    await _ensure_auth_table(db)
+    if not await _auth_db_ready(db):
+        # Without DB persistence we cannot validate passwords, but owner aliases
+        # can still enter by using set-password flow.
+        if email in _OWNER_EMAIL_ALIASES:
+            raise HTTPException(status_code=400, detail="No password set yet. Please set a password first.")
+        raise HTTPException(status_code=503, detail="Auth service is temporarily unavailable.")
 
     row = await db.execute(
         text("SELECT password_hash FROM auth_users WHERE email = :email"),
