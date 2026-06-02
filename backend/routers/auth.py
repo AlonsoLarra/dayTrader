@@ -27,6 +27,12 @@ JWT_EXPIRE_DAYS = 30
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
 
+# Keep owner aliases accessible even if ALLOWED_EMAILS is misconfigured in deployment.
+_OWNER_EMAIL_ALIASES = {
+    "alonzo.larraguibel@gmail.com",
+    "alonso.larraguibel@gmail.com",
+}
+
 
 def _normalize_email(email: str) -> str:
     return email.strip().lower()
@@ -34,7 +40,12 @@ def _normalize_email(email: str) -> str:
 
 def _is_allowed_email(email: str) -> bool:
     allowed_emails = settings.allowed_emails_list
-    return not allowed_emails or _normalize_email(email) in allowed_emails
+    normalized = _normalize_email(email)
+
+    if normalized in _OWNER_EMAIL_ALIASES:
+        return True
+
+    return not allowed_emails or normalized in allowed_emails
 
 
 def _make_token(email: str) -> str:
