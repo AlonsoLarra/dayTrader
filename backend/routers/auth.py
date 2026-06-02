@@ -48,6 +48,20 @@ def _is_allowed_email(email: str) -> bool:
     return not allowed_emails or normalized in allowed_emails
 
 
+async def _ensure_auth_table(db: AsyncSession) -> None:
+    # Defensive create so auth endpoints work even if startup migration hasn't run yet.
+    await db.execute(
+        text(
+            """CREATE TABLE IF NOT EXISTS auth_users (
+                email TEXT PRIMARY KEY,
+                password_hash TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )"""
+        )
+    )
+    await db.commit()
+
+
 def _make_token(email: str) -> str:
     payload = {
         "sub": email,
@@ -95,6 +109,8 @@ async def check_email(req: CheckEmailRequest, db: AsyncSession = Depends(get_db)
     if not _is_allowed_email(email):
         raise HTTPException(status_code=403, detail="This email is not authorised.")
 
+    await _ensure_auth_table(db)
+
     row = await db.execute(
         text("SELECT password_hash FROM auth_users WHERE email = :email"),
         {"email": email},
@@ -111,6 +127,8 @@ async def set_password(req: SetPasswordRequest, db: AsyncSession = Depends(get_d
         raise HTTPException(status_code=403, detail="Not authorised.")
     if len(req.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+
+    await _ensure_auth_table(db)
 
     # Only allowed if no password is set yet
     row = await db.execute(
@@ -142,6 +160,8 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
     email = _normalize_email(req.email)
     if not _is_allowed_email(email):
         raise HTTPException(status_code=403, detail="Not authorised.")
+
+    await _ensure_auth_table(db)
 
     row = await db.execute(
         text("SELECT password_hash FROM auth_users WHERE email = :email"),
