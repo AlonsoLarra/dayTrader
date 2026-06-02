@@ -13,11 +13,10 @@ import type {
   TrainingRunSummary,
   TrainingStartRequest,
 } from '../types';
+import { getApiBaseUrl } from '../config';
 
-// In production, set VITE_API_BASE_URL = https://your-backend.railway.app/api
-// Locally it falls back to the Vite proxy at /api
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL: getApiBaseUrl(),
   headers: { 'Content-Type': 'application/json' },
   timeout: 120000,
 });

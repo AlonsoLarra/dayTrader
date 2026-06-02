@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { WsMessage } from '../types';
+import { getWsUrl } from '../config';
 
-// In production, set VITE_WS_URL = wss://your-backend.railway.app/ws
-// Locally it falls back to localhost
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
+const WS_URL = getWsUrl();
 
 export function useWebSocket(enabled = true) {
   const [messages, setMessages] = useState<WsMessage[]>([]);

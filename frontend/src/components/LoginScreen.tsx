@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { TrendingUp } from 'lucide-react';
+import { getApiBaseUrl } from '../config';
 
 interface Props {
   onAuthenticated: (token: string) => void;
@@ -15,7 +16,7 @@ export function LoginScreen({ onAuthenticated }: Props) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const API = import.meta.env.VITE_API_BASE_URL ?? '/api';
+  const API = getApiBaseUrl();
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
