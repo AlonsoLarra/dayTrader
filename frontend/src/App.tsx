@@ -5,6 +5,7 @@ import { Dashboard } from './components/Dashboard';
 import { BacktestPanel } from './components/BacktestPanel';
 import { TradeLog } from './components/TradeLog';
 import { AutoWatcherLogPanel } from './components/AutoWatcherLogPanel';
+import { TrainingDashboard } from './components/TrainingDashboard';
 import { KillSwitch } from './components/KillSwitch';
 import { PriceBoard } from './components/PriceBoard';
 import { WalletHeader } from './components/WalletHeader';
@@ -14,7 +15,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { getTrades, getAgents, getPaperWallet, getTradeSummary } from './api/client';
 import type { Trade, Agent, TradeSummary } from './types';
 
-type Tab = 'dashboard' | 'backtest' | 'logs' | 'config';
+type Tab = 'dashboard' | 'training' | 'backtest' | 'logs' | 'config';
 
 export default function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('daytrader_token'));
@@ -84,6 +85,7 @@ export default function App() {
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <Activity size={16} /> },
+    { id: 'training', label: 'Training', icon: <TrendingUp size={16} /> },
     { id: 'backtest', label: 'Strategy', icon: <BarChart2 size={16} /> },
     { id: 'logs', label: 'Trades', icon: <FileText size={16} /> },
     { id: 'config', label: 'Config', icon: <Settings size={16} /> },
@@ -168,6 +170,12 @@ export default function App() {
               available={available}
             />
           </div>
+        )}
+        {tab === 'training' && (
+          <TrainingDashboard
+            lastMessage={lastMessage}
+            onPromoted={refreshAll}
+          />
         )}
         {tab === 'backtest' && <BacktestPanel />}
         {tab === 'logs' && (

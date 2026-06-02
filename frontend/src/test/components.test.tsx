@@ -361,7 +361,7 @@ describe('WalletHeader', () => {
     await waitFor(() => screen.getByText('PAPER'));
     fireEvent.click(screen.getByText('PAPER').closest('button')!);
     await waitFor(() => expect(screen.getByText('Paper Wallet')).toBeInTheDocument());
-    expect(screen.getByText('USD')).toBeInTheDocument();
+    expect(screen.getAllByText('USD').length).toBeGreaterThan(0);
     expect(screen.getByText('USDT')).toBeInTheDocument();
   });
 

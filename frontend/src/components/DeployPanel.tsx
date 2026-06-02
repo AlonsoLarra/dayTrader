@@ -50,7 +50,9 @@ export function DeployPanel({ available, onDeployed }: Props) {
 
   useEffect(() => {
     if (status === 'working' && workingRef.current) {
-      workingRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (typeof workingRef.current.scrollIntoView === 'function') {
+        workingRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
   }, [status]);
 
@@ -105,12 +107,12 @@ export function DeployPanel({ available, onDeployed }: Props) {
         (e as { code?: string }).code === 'ECONNABORTED';
 
       if ((isNetworkError || isTimeout) && retryCount < 1) {
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(r => setTimeout(r, 250));
         return handleStart(retryCount + 1);
       }
 
       const msg = isNetworkError
-        ? 'Connection lost. Check your signal and try again.'
+        ? 'Network error. Check your signal and try again.'
         : isTimeout
           ? 'Request timed out. The market scan is taking too long — try again.'
           : typeof e === 'object' && e !== null && 'response' in e

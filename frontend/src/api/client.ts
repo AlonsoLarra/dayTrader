@@ -1,5 +1,18 @@
 import axios from 'axios';
-import type { Agent, Trade, AgentLog, AutoWatcherLog, BacktestResult, TradeSummary, PairAnalysis, DeployResult, Position } from '../types';
+import type {
+  Agent,
+  Trade,
+  AgentLog,
+  AutoWatcherLog,
+  BacktestResult,
+  TradeSummary,
+  PairAnalysis,
+  DeployResult,
+  Position,
+  TrainingRunDetail,
+  TrainingRunSummary,
+  TrainingStartRequest,
+} from '../types';
 
 // In production, set VITE_API_BASE_URL = https://your-backend.railway.app/api
 // Locally it falls back to the Vite proxy at /api
@@ -202,3 +215,21 @@ export const getStrategyReasoning = () =>
 
 export const getMarketScan = () =>
   api.get<{ pairs: PairScan[] }>('/strategy/market-scan').then(r => r.data);
+
+export const getTrainingRuns = (limit = 20) =>
+  api.get<TrainingRunSummary[]>('/training/runs', { params: { limit } }).then(r => r.data);
+
+export const getTrainingRun = (runId: string) =>
+  api.get<TrainingRunDetail>(`/training/runs/${runId}`).then(r => r.data);
+
+export const startTrainingRun = (data: TrainingStartRequest) =>
+  api.post<{ run_id: string; status: string }>('/training/runs', data).then(r => r.data);
+
+export const stopTrainingRun = (runId: string) =>
+  api.post<{ run_id: string; status: string }>(`/training/runs/${runId}/stop`).then(r => r.data);
+
+export const promoteTrainingRun = (
+  runId: string,
+  data: { budget: number; auto_start?: boolean; allow_unmet_goal?: boolean }
+) =>
+  api.post<{ run_id: string; agent_id: string; strategy: string; status: string; auto_started: boolean; goal_met: boolean }>(`/training/runs/${runId}/promote`, data).then(r => r.data);

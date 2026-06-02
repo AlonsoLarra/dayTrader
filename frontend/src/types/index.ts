@@ -100,8 +100,92 @@ export interface Position {
 }
 
 export interface WsMessage {
-  type: 'trade' | 'log' | 'state_update' | 'price_update' | 'ping' | 'pong';
+  type:
+    | 'trade'
+    | 'log'
+    | 'state_update'
+    | 'price_update'
+    | 'training_update'
+    | 'training_run_completed'
+    | 'training_run_failed'
+    | 'ping'
+    | 'pong';
   payload?: unknown;
+}
+
+export interface TrainingGoalRequest {
+  target_return_pct: number;
+  min_win_rate: number;
+  max_drawdown_pct: number;
+  min_trades: number;
+}
+
+export interface TrainingStartRequest {
+  symbol: string;
+  timeframe: string;
+  start_date: string;
+  end_date: string;
+  initial_capital: number;
+  max_trials: number;
+  strategy_candidates: string[];
+  goal: TrainingGoalRequest;
+}
+
+export interface TrainingRunSummary {
+  run_id: string;
+  status: string;
+  symbol: string;
+  timeframe: string;
+  start_date: string;
+  end_date: string;
+  max_trials: number;
+  completed_trials: number;
+  best_score: number | null;
+  best_strategy: string | null;
+  best_goal_met: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+  finished_at?: string | null;
+}
+
+export interface TrainingTrialResult {
+  id: number;
+  trial_index: number;
+  strategy: string;
+  params: Record<string, unknown>;
+  status: string;
+  objective_score: number | null;
+  metrics: Record<string, unknown>;
+  error_message?: string | null;
+  created_at?: string | null;
+  finished_at?: string | null;
+}
+
+export interface TrainingRunDetail {
+  run_id: string;
+  status: string;
+  symbol: string;
+  timeframe: string;
+  start_date: string;
+  end_date: string;
+  initial_capital: number;
+  max_trials: number;
+  completed_trials: number;
+  strategy_candidates: string[];
+  goal: TrainingGoalRequest;
+  best: {
+    strategy: string | null;
+    score: number | null;
+    params: Record<string, unknown>;
+    metrics: Record<string, unknown>;
+    goal_met: boolean;
+  };
+  error_message?: string | null;
+  created_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  updated_at?: string | null;
+  trials: TrainingTrialResult[];
 }
 
 export interface PairAnalysis {
