@@ -33,6 +33,8 @@ _OWNER_EMAIL_ALIASES = {
     "alonso.larraguibel@gmail.com",
 }
 
+_CANONICAL_OWNER_EMAIL = "alonso.larraguibel@gmail.com"
+
 
 def _normalize_email(email: str) -> str:
     return email.strip().lower()
@@ -72,8 +74,12 @@ async def _auth_db_ready(db: AsyncSession) -> bool:
 
 
 def _make_token(email: str) -> str:
+    token_subject = _normalize_email(email)
+    if token_subject in _OWNER_EMAIL_ALIASES:
+        token_subject = _CANONICAL_OWNER_EMAIL
+
     payload = {
-        "sub": email,
+        "sub": token_subject,
         "exp": datetime.utcnow() + timedelta(days=JWT_EXPIRE_DAYS),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
