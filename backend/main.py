@@ -289,6 +289,17 @@ app.add_middleware(
 )
 
 
+def _cors_auth_error(request: Request, detail: str) -> JSONResponse:
+    """Return auth errors with CORS headers so browsers don't surface a network error."""
+    response = JSONResponse(status_code=401, content={"detail": detail})
+    origin = request.headers.get("origin")
+    if origin and origin in settings.cors_origins_list:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Vary"] = "Origin"
+    return response
+
+
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     """Enforce JWT auth on all routes except public paths, WebSocket, and CORS preflight.
@@ -300,7 +311,7 @@ async def auth_middleware(request: Request, call_next):
 
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
-        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+        return _cors_auth_error(request, "Not authenticated")
 
     token = auth_header.split(" ", 1)[1]
     try:
@@ -308,9 +319,9 @@ async def auth_middleware(request: Request, call_next):
         email = str(payload.get("sub", "")).strip().lower()
         allowed_emails = settings.allowed_emails_list
         if not email or (allowed_emails and email not in allowed_emails):
-            return JSONResponse(status_code=401, content={"detail": "Invalid user"})
+            return _cors_auth_error(request, "Invalid user")
     except JWTError:
-        return JSONResponse(status_code=401, content={"detail": "Invalid or expired token"})
+        return _cors_auth_error(request, "Invalid or expired token")
 
     return await call_next(request)
 
