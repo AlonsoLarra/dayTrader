@@ -24,6 +24,9 @@ STRATEGY_MAP = {
 
 DEFAULT_CANDIDATES = ["rsi", "ma_crossover", "trend_rsi", "adaptive"]
 
+# Fraction of candles reserved for out-of-sample scoring.
+HOLDOUT_FRACTION = 0.2
+
 
 def _json_dumps(data: Any) -> str:
     return json.dumps(data, separators=(",", ":"))
@@ -133,6 +136,28 @@ class TrainingService:
 
                 candidates = _json_loads(run.strategy_candidates_json, DEFAULT_CANDIDATES)
                 goal = _json_loads(run.goal_json, {})
+                symbol = run.symbol
+                timeframe = run.timeframe
+                start_date = run.start_date
+                end_date = run.end_date
+                initial_capital = run.initial_capital
+                max_trials = int(run.max_trials)
+
+            # ── Fetch OHLCV once for the entire run ────────────────────
+            try:
+                ohlcv_data = await runner.fetch_ohlcv(symbol, timeframe, start_date, end_date)
+            except Exception as exc:
+                await self._mark_failed(run_id, f"OHLCV fetch failed: {exc}")
+                return
+
+            if not ohlcv_data:
+                await self._mark_failed(run_id, "No OHLCV data returned for the requested range")
+                return
+
+            # ── Split into in-sample (train) and holdout (score) ───────
+            split_idx = max(1, int(len(ohlcv_data) * (1 - HOLDOUT_FRACTION)))
+            train_data = ohlcv_data[:split_idx]
+            holdout_data = ohlcv_data[split_idx:]
 
             for strategy_name in candidates:
                 stats[strategy_name] = {"plays": 0.0, "reward_sum": 0.0}
@@ -144,7 +169,7 @@ class TrainingService:
                         return
                     if run.status != "running":
                         break
-                    if trial_index > int(run.max_trials):
+                    if trial_index > max_trials:
                         break
 
                 strategy_name = self._pick_strategy(stats)
@@ -172,19 +197,29 @@ class TrainingService:
                 try:
                     strategy_cls = STRATEGY_MAP[strategy_name]
                     strategy = strategy_cls(params)
-                    metrics = await runner.run(
-                        strategy=strategy,
-                        symbol=run.symbol,
-                        timeframe=run.timeframe,
-                        start_date=run.start_date,
-                        end_date=run.end_date,
-                        initial_capital=run.initial_capital,
-                    )
-                    if metrics.get("error"):
+
+                    # Score on holdout; include in-sample metrics for reference.
+                    holdout_metrics = runner.simulate(strategy, holdout_data, initial_capital)
+                    in_sample_metrics = runner.simulate(strategy, train_data, initial_capital)
+
+                    if holdout_metrics.get("error"):
                         trial_status = "failed"
-                        trial_error = str(metrics.get("error"))
-                    score, goal_met = self._score_metrics(metrics, goal)
-                    metrics["goal_met"] = goal_met
+                        trial_error = str(holdout_metrics.get("error"))
+                        metrics = holdout_metrics
+                    else:
+                        score, goal_met, criteria = self._score_metrics(holdout_metrics, goal)
+                        metrics = {
+                            **holdout_metrics,
+                            "goal_met": goal_met,
+                            "goal_criteria": criteria,
+                            "in_sample": {
+                                "total_return_pct": in_sample_metrics.get("total_return_pct"),
+                                "win_rate": in_sample_metrics.get("win_rate"),
+                                "total_trades": in_sample_metrics.get("total_trades"),
+                                "max_drawdown_pct": in_sample_metrics.get("max_drawdown_pct"),
+                            },
+                        }
+
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -267,6 +302,9 @@ class TrainingService:
                     "max_trials": run.max_trials,
                     "best_score": run.best_score,
                     "best_strategy": run.best_strategy,
+                    "best_goal_met": bool(
+                        _json_loads(run.best_metrics_json, {}).get("goal_met", False)
+                    ),
                 },
             )
 
@@ -343,19 +381,33 @@ class TrainingService:
                 best_name = name
         return best_name
 
-    def _score_metrics(self, metrics: Dict[str, Any], goal: Dict[str, Any]) -> Tuple[float, bool]:
+    def _score_metrics(
+        self, metrics: Dict[str, Any], goal: Dict[str, Any]
+    ) -> Tuple[float, bool, Dict[str, bool]]:
+        """Return (score, goal_met, per-criterion breakdown)."""
         if metrics.get("error"):
-            return -100.0, False
+            return -100.0, False, {}
 
         total_return_pct = float(metrics.get("total_return_pct", 0.0) or 0.0)
         win_rate = float(metrics.get("win_rate", 0.0) or 0.0)
         drawdown = float(metrics.get("max_drawdown_pct", 0.0) or 0.0)
-        total_trades = float(metrics.get("total_trades", 0) or 0)
+        total_trades = int(metrics.get("total_trades", 0) or 0)
 
         target_return_pct = max(0.01, float(goal.get("target_return_pct", 0.1)))
         min_win_rate = max(1.0, float(goal.get("min_win_rate", 45.0)))
         max_drawdown_pct = max(1.0, float(goal.get("max_drawdown_pct", 18.0)))
-        min_trades = max(1.0, float(goal.get("min_trades", 5)))
+        min_trades = max(1, int(goal.get("min_trades", 5)))
+
+        # Hard penalty for strategies that never trade — a 0-trade run has 0%
+        # drawdown which would otherwise earn 15 free scoring points.
+        if total_trades == 0:
+            criteria = {
+                "return_met": False,
+                "win_rate_met": False,
+                "drawdown_met": False,
+                "trades_met": False,
+            }
+            return -50.0, False, criteria
 
         score = 0.0
         score += max(-40.0, min(60.0, total_return_pct * 4.0))
@@ -367,16 +419,17 @@ class TrainingService:
         score += drawdown_factor * 15.0
         score += max(0.0, min(5.0, (total_trades / min_trades) * 5.0))
 
-        goal_met = (
-            total_return_pct >= target_return_pct
-            and win_rate >= min_win_rate
-            and drawdown <= max_drawdown_pct
-            and total_trades >= min_trades
-        )
+        criteria = {
+            "return_met": total_return_pct >= target_return_pct,
+            "win_rate_met": win_rate >= min_win_rate,
+            "drawdown_met": drawdown <= max_drawdown_pct,
+            "trades_met": total_trades >= min_trades,
+        }
+        goal_met = all(criteria.values())
         if goal_met:
             score += 10.0
 
-        return round(score, 3), goal_met
+        return round(score, 3), goal_met, criteria
 
     def _sample_params(self, strategy_name: str) -> Dict[str, Any]:
         if strategy_name == "rsi":
@@ -410,13 +463,32 @@ class TrainingService:
                 "volume_factor": round(random.uniform(0.9, 1.25), 2),
                 "profit_target_pct": round(random.uniform(0.01, 0.045), 4),
                 "max_hold_candles": random.randint(8, 24),
+                "ema_slope_bars": random.randint(3, 8),
             }
+
+        # adaptive — sample all meaningful knobs
+        macd_fast = random.randint(8, 14)
+        macd_slow = random.randint(20, 32)
+        if macd_fast >= macd_slow:
+            macd_slow = macd_fast + random.randint(8, 14)
+        macd_signal = random.randint(7, 11)
+
+        trail_low = round(random.uniform(0.8, 1.5), 2)
+        trail_normal = round(random.uniform(trail_low + 0.2, trail_low + 1.5), 2)
+        trail_high = round(random.uniform(trail_normal + 0.3, trail_normal + 2.0), 2)
 
         return {
             "ema_period": random.randint(40, 80),
             "rsi_period": random.randint(10, 18),
+            "macd_fast": macd_fast,
+            "macd_slow": macd_slow,
+            "macd_signal": macd_signal,
+            "bb_period": random.randint(15, 25),
+            "bb_std": round(random.uniform(1.8, 2.5), 1),
+            "atr_period": random.randint(10, 20),
             "volume_factor": round(random.uniform(0.9, 1.25), 2),
             "max_hold_candles": random.randint(10, 30),
+            "ema_slope_bars": random.randint(3, 8),
             "rsi_buy_low_vol": round(random.uniform(38.0, 46.0), 1),
             "rsi_buy_normal": round(random.uniform(40.0, 48.0), 1),
             "rsi_buy_high_vol": round(random.uniform(30.0, 42.0), 1),
@@ -424,6 +496,11 @@ class TrainingService:
             "rsi_sell_normal": round(random.uniform(60.0, 70.0), 1),
             "rsi_sell_high_vol": round(random.uniform(68.0, 80.0), 1),
             "min_profit_for_macd_exit": round(random.uniform(0.002, 0.01), 4),
+            "trail_mult_low_vol": trail_low,
+            "trail_mult_normal": trail_normal,
+            "trail_mult_high_vol": trail_high,
+            "low_vol_percentile": float(random.randint(20, 35)),
+            "high_vol_percentile": float(random.randint(65, 80)),
         }
 
 

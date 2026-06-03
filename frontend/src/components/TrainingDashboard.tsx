@@ -6,7 +6,7 @@ import {
   stopTrainingRun,
   promoteTrainingRun,
 } from '../api/client';
-import type { TrainingRunDetail, TrainingRunSummary, TrainingStartRequest, WsMessage } from '../types';
+import type { GoalCriteria, TrainingRunDetail, TrainingRunSummary, TrainingStartRequest, WsMessage } from '../types';
 
 interface Props {
   lastMessage: WsMessage | null;
@@ -35,6 +35,56 @@ function formatPct(value: unknown) {
   return `${num.toFixed(2)}%`;
 }
 
+function GoalCriteriaBreakdown({
+  criteria,
+  goal,
+}: {
+  criteria: GoalCriteria | undefined;
+  goal: TrainingRunDetail['goal'];
+}) {
+  if (!criteria) return null;
+
+  const items: { label: string; met: boolean; detail: string }[] = [
+    {
+      label: 'Return',
+      met: criteria.return_met,
+      detail: `≥ ${goal.target_return_pct}%`,
+    },
+    {
+      label: 'Win Rate',
+      met: criteria.win_rate_met,
+      detail: `≥ ${goal.min_win_rate}%`,
+    },
+    {
+      label: 'Drawdown',
+      met: criteria.drawdown_met,
+      detail: `≤ ${goal.max_drawdown_pct}%`,
+    },
+    {
+      label: 'Trades',
+      met: criteria.trades_met,
+      detail: `≥ ${goal.min_trades}`,
+    },
+  ];
+
+  return (
+    <div className="flex flex-wrap gap-2 mt-1">
+      {items.map(({ label, met, detail }) => (
+        <span
+          key={label}
+          className={`text-[10px] px-2 py-0.5 rounded border ${
+            met
+              ? 'border-green-700 text-green-400 bg-green-950/40'
+              : 'border-red-800 text-red-400 bg-red-950/40'
+          }`}
+        >
+          {met ? '✓' : '✗'} {label} {detail}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function TrainingDashboard({ lastMessage, onPromoted }: Props) {
   const [runs, setRuns] = useState<TrainingRunSummary[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -49,43 +99,83 @@ export function TrainingDashboard({ lastMessage, onPromoted }: Props) {
   const refreshRuns = useCallback(async () => {
     const data = await getTrainingRuns(30);
     setRuns(data);
-    if (!selectedRunId && data.length > 0) {
-      setSelectedRunId(data[0].run_id);
-    }
-  }, [selectedRunId]);
+    return data;
+  }, []);
 
-  const refreshDetail = useCallback(async () => {
-    if (!selectedRunId) {
+  const refreshDetail = useCallback(async (runId: string | null) => {
+    if (!runId) {
       setDetail(null);
       return;
     }
-    const data = await getTrainingRun(selectedRunId);
+    const data = await getTrainingRun(runId);
     setDetail(data);
-  }, [selectedRunId]);
+  }, []);
 
   const refreshAll = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      await refreshRuns();
-      await refreshDetail();
+      const data = await refreshRuns();
+      const targetId = selectedRunId ?? (data.length > 0 ? data[0].run_id : null);
+      if (!selectedRunId && targetId) setSelectedRunId(targetId);
+      await refreshDetail(targetId);
     } catch (exc) {
       setError((exc as Error)?.message || 'Failed to load training data');
     } finally {
       setLoading(false);
     }
-  }, [refreshRuns, refreshDetail]);
+  }, [refreshRuns, refreshDetail, selectedRunId]);
 
   useEffect(() => {
     refreshAll();
-  }, [refreshAll]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // Refresh detail whenever the selected run changes.
+  useEffect(() => {
+    refreshDetail(selectedRunId);
+  }, [selectedRunId, refreshDetail]);
+
+  // On WS update: patch run list in-place (no extra fetch) and refresh detail
+  // only for the selected run. This prevents the count divergence race.
   useEffect(() => {
     if (!lastMessage) return;
-    if (!['training_update', 'training_run_completed', 'training_run_failed'].includes(lastMessage.type)) return;
-    refreshRuns();
-    refreshDetail();
-  }, [lastMessage, refreshRuns, refreshDetail]);
+    const { type, payload } = lastMessage as { type: string; payload: Record<string, unknown> };
+    if (!['training_update', 'training_run_completed', 'training_run_failed'].includes(type)) return;
+    if (!payload) return;
+
+    const wsRunId = payload.run_id as string | undefined;
+
+    // Patch the matching card in the run list directly from the WS payload.
+    setRuns(prev =>
+      prev.map(r => {
+        if (r.run_id !== wsRunId) return r;
+        return {
+          ...r,
+          status: (payload.status as string) ?? r.status,
+          completed_trials:
+            payload.completed_trials != null
+              ? (payload.completed_trials as number)
+              : r.completed_trials,
+          max_trials: payload.max_trials != null ? (payload.max_trials as number) : r.max_trials,
+          best_score: payload.best_score != null ? (payload.best_score as number) : r.best_score,
+          best_strategy:
+            payload.best_strategy != null
+              ? (payload.best_strategy as string)
+              : r.best_strategy,
+          best_goal_met:
+            payload.best_goal_met != null
+              ? Boolean(payload.best_goal_met)
+              : r.best_goal_met,
+        };
+      })
+    );
+
+    // Full detail refresh only for the selected run.
+    if (wsRunId === selectedRunId) {
+      refreshDetail(wsRunId);
+    }
+  }, [lastMessage, selectedRunId, refreshDetail]);
 
   const progressPct = useMemo(() => {
     if (!detail || detail.max_trials <= 0) return 0;
@@ -96,6 +186,7 @@ export function TrainingDashboard({ lastMessage, onPromoted }: Props) {
   const runBestWinRate = Number(detail?.best?.metrics?.win_rate ?? 0);
   const runBestDrawdown = Number(detail?.best?.metrics?.max_drawdown_pct ?? 0);
   const runGoalMet = Boolean(detail?.best?.goal_met);
+  const bestCriteria = detail?.best?.metrics?.goal_criteria as GoalCriteria | undefined;
 
   const onStartRun = async () => {
     try {
@@ -330,6 +421,7 @@ export function TrainingDashboard({ lastMessage, onPromoted }: Props) {
                   <div className={`text-lg font-semibold ${runBestReturn >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {formatPct(runBestReturn)}
                   </div>
+                  <div className="text-xs text-gray-500 mt-0.5">Holdout period</div>
                 </div>
                 <div className="bg-gray-900 border border-gray-700 rounded p-3">
                   <div className="text-[10px] uppercase text-gray-500">Goal Status</div>
@@ -345,9 +437,17 @@ export function TrainingDashboard({ lastMessage, onPromoted }: Props) {
                   <div className="h-full bg-blue-500 transition-all" style={{ width: `${progressPct}%` }} />
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  Goal focus: positive return, win-rate floor, drawdown cap. Current best drawdown: {formatPct(runBestDrawdown)}
+                  Scored on holdout (last 20% of date range). Current best drawdown: {formatPct(runBestDrawdown)}
                 </div>
               </div>
+
+              {/* Per-criterion goal breakdown */}
+              {!runGoalMet && bestCriteria && (
+                <div className="bg-gray-900 border border-amber-800/40 rounded p-3 space-y-1">
+                  <div className="text-xs text-amber-400 font-medium">Failing criteria on best trial:</div>
+                  <GoalCriteriaBreakdown criteria={bestCriteria} goal={detail.goal} />
+                </div>
+              )}
 
               <div className="bg-gray-900 border border-gray-700 rounded p-3 space-y-2">
                 <div className="text-xs text-gray-400">Promote best configuration to live paper agent</div>
@@ -377,7 +477,7 @@ export function TrainingDashboard({ lastMessage, onPromoted }: Props) {
                 </div>
                 {!runGoalMet && (
                   <div className="text-xs text-amber-300">
-                    Promotion is blocked until the best trial meets the configured training goal.
+                    Promotion is blocked until the best trial meets all configured goal criteria.
                   </div>
                 )}
               </div>
@@ -400,6 +500,7 @@ export function TrainingDashboard({ lastMessage, onPromoted }: Props) {
                       const ret = Number(t.metrics?.total_return_pct ?? 0);
                       const win = Number(t.metrics?.win_rate ?? 0);
                       const dd = Number(t.metrics?.max_drawdown_pct ?? 0);
+                      const trialGoalMet = Boolean((t.metrics as Record<string, unknown>)?.goal_met);
                       return (
                         <tr key={t.id} className="border-b border-gray-800 text-gray-200">
                           <td className="py-2 pr-3">{t.trial_index}</td>
@@ -408,7 +509,14 @@ export function TrainingDashboard({ lastMessage, onPromoted }: Props) {
                           <td className={`py-2 pr-3 ${ret >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formatPct(ret)}</td>
                           <td className="py-2 pr-3">{formatPct(win)}</td>
                           <td className="py-2 pr-3">{formatPct(dd)}</td>
-                          <td className="py-2 pr-3 uppercase text-[11px] tracking-wide text-gray-400">{t.status}</td>
+                          <td className="py-2 pr-3">
+                            <span className="uppercase text-[11px] tracking-wide text-gray-400">{t.status}</span>
+                            {t.status === 'completed' && (
+                              <span className={`ml-1.5 text-[10px] ${trialGoalMet ? 'text-green-400' : 'text-gray-600'}`}>
+                                {trialGoalMet ? '✓goal' : ''}
+                              </span>
+                            )}
+                          </td>
                         </tr>
                       );
                     })}

@@ -22,8 +22,17 @@ class BaseStrategy(ABC):
         self.params = params or {}
 
     @abstractmethod
-    def analyze(self, ohlcv_data: list) -> StrategyResult:
-        """Takes OHLCV list [[timestamp, open, high, low, close, volume], ...], returns signal."""
+    def analyze(
+        self,
+        ohlcv_data: list,
+        entry_price: float = None,
+        candles_held: int = 0,
+    ) -> StrategyResult:
+        """Takes OHLCV list [[timestamp, open, high, low, close, volume], ...], returns signal.
+
+        entry_price and candles_held are set when a position is open, enabling
+        strategies to implement trailing stops, profit targets, and time exits.
+        """
         pass
 
     @property

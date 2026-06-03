@@ -18,7 +18,7 @@ class MACrossoverStrategy(BaseStrategy):
     def min_candles(self) -> int:
         return self.slow_period + 2
 
-    def analyze(self, ohlcv_data: list) -> StrategyResult:
+    def analyze(self, ohlcv_data: list, entry_price: float = None, candles_held: int = 0) -> StrategyResult:
         if len(ohlcv_data) < self.min_candles:
             return StrategyResult(
                 signal=Signal.HOLD,

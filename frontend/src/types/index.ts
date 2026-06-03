@@ -161,6 +161,13 @@ export interface TrainingTrialResult {
   finished_at?: string | null;
 }
 
+export interface GoalCriteria {
+  return_met: boolean;
+  win_rate_met: boolean;
+  drawdown_met: boolean;
+  trades_met: boolean;
+}
+
 export interface TrainingRunDetail {
   run_id: string;
   status: string;
@@ -177,7 +184,7 @@ export interface TrainingRunDetail {
     strategy: string | null;
     score: number | null;
     params: Record<string, unknown>;
-    metrics: Record<string, unknown>;
+    metrics: Record<string, unknown> & { goal_criteria?: GoalCriteria };
     goal_met: boolean;
   };
   error_message?: string | null;
