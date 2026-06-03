@@ -25,6 +25,12 @@ import os
 _JWT_SECRET = os.environ.get("JWT_SECRET", "daytrader-local-jwt-secret-change-in-prod")
 _JWT_ALGORITHM = "HS256"
 
+# Keep owner aliases accessible even if ALLOWED_EMAILS is misconfigured in deployment.
+_OWNER_EMAIL_ALIASES = {
+    "alonzo.larraguibel@gmail.com",
+    "alonso.larraguibel@gmail.com",
+}
+
 _PUBLIC_PATHS = {"/api/health", "/api/auth/login", "/api/auth/check-email", "/api/auth/set-password"}
 
 _log = logging.getLogger("auto_watcher")
@@ -318,7 +324,8 @@ async def auth_middleware(request: Request, call_next):
         payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
         email = str(payload.get("sub", "")).strip().lower()
         allowed_emails = settings.allowed_emails_list
-        if not email or (allowed_emails and email not in allowed_emails):
+        is_owner_alias = email in _OWNER_EMAIL_ALIASES
+        if not email or (allowed_emails and email not in allowed_emails and not is_owner_alias):
             return _cors_auth_error(request, "Invalid user")
     except JWTError:
         return _cors_auth_error(request, "Invalid or expired token")
