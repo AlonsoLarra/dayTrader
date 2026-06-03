@@ -40,6 +40,12 @@ def _normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
+def _canonicalize_email(email: str) -> str:
+    """Normalize and map owner aliases to the canonical address before DB ops."""
+    normalized = _normalize_email(email)
+    return _CANONICAL_OWNER_EMAIL if normalized in _OWNER_EMAIL_ALIASES else normalized
+
+
 def _is_allowed_email(email: str) -> bool:
     allowed_emails = settings.allowed_emails_list
     normalized = _normalize_email(email)
@@ -47,7 +53,8 @@ def _is_allowed_email(email: str) -> bool:
     if normalized in _OWNER_EMAIL_ALIASES:
         return True
 
-    return not allowed_emails or normalized in allowed_emails
+    # Fail-closed: empty allowlist denies everyone (except owner aliases above).
+    return normalized in allowed_emails
 
 
 async def _ensure_auth_table(db: AsyncSession) -> None:
@@ -120,7 +127,7 @@ class SetPasswordRequest(BaseModel):
 @router.post("/check-email")
 async def check_email(req: CheckEmailRequest, db: AsyncSession = Depends(get_db)):
     """Step 1: check if this email is allowed and whether a password has been set."""
-    email = _normalize_email(req.email)
+    email = _canonicalize_email(req.email)
     if not _is_allowed_email(email):
         raise HTTPException(status_code=403, detail="This email is not authorised.")
 
@@ -141,7 +148,7 @@ async def check_email(req: CheckEmailRequest, db: AsyncSession = Depends(get_db)
 @router.post("/set-password")
 async def set_password(req: SetPasswordRequest, db: AsyncSession = Depends(get_db)):
     """First-time setup: set the password for the requested email."""
-    email = _normalize_email(req.email)
+    email = _canonicalize_email(req.email)
     if not _is_allowed_email(email):
         raise HTTPException(status_code=403, detail="Not authorised.")
     if len(req.password) < 8:
@@ -179,7 +186,7 @@ async def set_password(req: SetPasswordRequest, db: AsyncSession = Depends(get_d
 @router.post("/login")
 async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Validate email + password, return JWT."""
-    email = _normalize_email(req.email)
+    email = _canonicalize_email(req.email)
     if not _is_allowed_email(email):
         raise HTTPException(status_code=403, detail="Not authorised.")
 

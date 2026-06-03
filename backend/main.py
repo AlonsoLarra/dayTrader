@@ -18,20 +18,11 @@ from routers import strategy as strategy_router
 from routers import auth as auth_router
 from routers import auto_watcher as auto_watcher_router
 from routers import training as training_router
+from routers.auth import JWT_SECRET, JWT_ALGORITHM, _OWNER_EMAIL_ALIASES
 from agents.orchestrator import orchestrator, assess_market_opportunity
 from exchange.client import create_exchange, get_available_symbols
 from routers.ws import manager
 from training.service import training_service
-
-import os
-_JWT_SECRET = os.environ.get("JWT_SECRET", "daytrader-local-jwt-secret-change-in-prod")
-_JWT_ALGORITHM = "HS256"
-
-# Keep owner aliases accessible even if ALLOWED_EMAILS is misconfigured in deployment.
-_OWNER_EMAIL_ALIASES = {
-    "alonzo.larraguibel@gmail.com",
-    "alonso.larraguibel@gmail.com",
-}
 
 _PUBLIC_PATHS = {"/api/health", "/api/auth/login", "/api/auth/check-email", "/api/auth/set-password"}
 
@@ -324,7 +315,7 @@ async def auth_middleware(request: Request, call_next):
 
     token = auth_header.split(" ", 1)[1]
     try:
-        payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         email = str(payload.get("sub", "")).strip().lower()
         allowed_emails = settings.allowed_emails_list
         is_owner_alias = email in _OWNER_EMAIL_ALIASES

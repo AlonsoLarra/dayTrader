@@ -170,7 +170,7 @@ export function LoginScreen({ onAuthenticated }: Props) {
                 className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 text-white rounded-lg font-medium text-sm transition-colors">
                 {loading ? 'Setting up…' : 'Set Password & Enter'}
               </button>
-              <button type="button" onClick={() => { setStep('email'); setError(''); }}
+              <button type="button" onClick={() => { setStep('email'); setError(''); setPassword(''); setConfirm(''); }}
                 className="w-full text-xs text-gray-500 hover:text-gray-300 transition-colors">
                 ← Use a different email
               </button>
