@@ -102,3 +102,45 @@ class RiskConfig(Base):
     max_daily_loss_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.05)
     max_trades_per_day: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class TrainingRun(Base):
+    __tablename__ = "training_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="running")
+    symbol: Mapped[str] = mapped_column(String, nullable=False)
+    timeframe: Mapped[str] = mapped_column(String, nullable=False)
+    start_date: Mapped[str] = mapped_column(String, nullable=False)
+    end_date: Mapped[str] = mapped_column(String, nullable=False)
+    initial_capital: Mapped[float] = mapped_column(Float, nullable=False)
+    max_trials: Mapped[int] = mapped_column(Integer, nullable=False, default=24)
+    completed_trials: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    strategy_candidates_json: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    goal_json: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    best_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    best_strategy: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    best_params_json: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    best_metrics_json: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class TrainingTrial(Base):
+    __tablename__ = "training_trials"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String, nullable=False)
+    trial_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    strategy: Mapped[str] = mapped_column(String, nullable=False)
+    params_json: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    objective_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    metrics_json: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

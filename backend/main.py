@@ -17,9 +17,11 @@ from routers import agents, trades, backtest, ws, prices, settings as settings_r
 from routers import strategy as strategy_router
 from routers import auth as auth_router
 from routers import auto_watcher as auto_watcher_router
+from routers import training as training_router
 from agents.orchestrator import orchestrator, assess_market_opportunity
 from exchange.client import create_exchange, get_available_symbols
 from routers.ws import manager
+from training.service import training_service
 
 import os
 _JWT_SECRET = os.environ.get("JWT_SECRET", "daytrader-local-jwt-secret-change-in-prod")
@@ -251,6 +253,7 @@ async def _background_retry_startup_state(app: FastAPI) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     orchestrator.set_broadcaster(manager)
+    training_service.set_broadcaster(manager)
     app.state.runtime_ready = False
     app.state.startup_error = None
     retry_task = None
@@ -343,6 +346,7 @@ app.include_router(settings_router.router)
 app.include_router(strategy_router.router)
 app.include_router(portfolio.router)
 app.include_router(auto_watcher_router.router)
+app.include_router(training_router.router)
 
 
 @app.get("/api/health")
